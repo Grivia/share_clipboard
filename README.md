@@ -22,7 +22,7 @@ See each component's README for build and configuration instructions.
 
 The production API is available at `https://zhy.hair/fastcopy`. Its health
 endpoint is `https://zhy.hair/fastcopy/healthz`. The deployment lives under
-`/Volumes/SSD_ZHITAI/my-cloudflared-app/fastcopy` and is connected to the
+`/Volumes/SSD_ZHITAI/my-cloudflared-app/share_clipboard` and is connected to the
 existing Nginx and Cloudflare Tunnel stack.
 
 Build artifacts:

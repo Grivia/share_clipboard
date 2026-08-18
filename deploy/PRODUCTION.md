@@ -3,11 +3,11 @@
 ## Layout
 
 - Root: `/Volumes/SSD_ZHITAI/my-cloudflared-app`
-- Server source: `fastcopy/server`
-- PostgreSQL data: `fastcopy/postgres`
-- Secrets and runtime environment: `fastcopy/.env` (mode `0600`)
+- Server source: `share_clipboard/server`
+- PostgreSQL data: `share_clipboard/postgres`
+- Secrets and runtime environment: `share_clipboard/.env` (mode `0600`)
 - Nginx path route: `conf/conf.d/default.conf`
-- Reserved subdomain route: `conf/conf.d/fastcopy.conf`
+- Reserved subdomain route: `conf/conf.d/share_clipboard.conf`
 
 The active public base URL is `https://zhy.hair/fastcopy`. The Nginx path proxy
 removes `/fastcopy` before forwarding requests, including the WebSocket route.
@@ -16,8 +16,8 @@ Tunnel Public Hostname before it can be used.
 
 ## Containers
 
-- `fastcopy-postgres`: PostgreSQL 17, internal Docker network only
-- `fastcopy-server`: read-only filesystem, all capabilities dropped
+- `share_clipboard_postgres`: PostgreSQL 17, internal Docker network only
+- `share_clipboard_server`: read-only filesystem, all capabilities dropped
 
 The production environment sets `FASTCOPY_MAX_USERS=1`. The first account can
 be created through the unified authentication endpoint; subsequent requests
@@ -28,9 +28,9 @@ with that account log in automatically.
 Run these commands from `/Volumes/SSD_ZHITAI/my-cloudflared-app`:
 
 ```bash
-docker compose up -d --build fastcopy-server
-docker compose ps fastcopy-server fastcopy-postgres
-docker compose logs --tail=100 fastcopy-server
+docker compose up -d --build share_clipboard_server
+docker compose ps share_clipboard_server share_clipboard_postgres
+docker compose logs --tail=100 share_clipboard_server
 curl -fsS https://zhy.hair/fastcopy/healthz
 ```
 
@@ -38,7 +38,7 @@ Before deployment, server source is synchronized from this repository:
 
 ```bash
 rsync -a --delete --exclude integration server/ \
-  /Volumes/SSD_ZHITAI/my-cloudflared-app/fastcopy/server/
+  /Volumes/SSD_ZHITAI/my-cloudflared-app/share_clipboard/server/
 ```
 
 Backups created before the initial deployment are named
