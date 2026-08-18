@@ -8,9 +8,11 @@ const elements = {
   enabled: document.querySelector("#enabled"),
   serverURL: document.querySelector("#server-url"),
   accountSection: document.querySelector("#account-section"),
+  sessionSection: document.querySelector("#session-section"),
   account: document.querySelector("#account"),
   password: document.querySelector("#password"),
   save: document.querySelector("#save"),
+  logout: document.querySelector("#logout"),
   refresh: document.querySelector("#refresh"),
   statusDot: document.querySelector("#status-dot"),
   statusTitle: document.querySelector("#status-title"),
@@ -71,6 +73,8 @@ async function loadStatus() {
     ]);
     elements.logs.textContent = logResult.stdout.trim() || "暂无日志";
     if (statusResult.errno !== 0 || !statusResult.stdout.trim()) {
+      latestStatus = null;
+      renderSession(false, {});
       setStatus("stopped", "守护进程未运行", "");
       return null;
     }
@@ -98,6 +102,8 @@ async function loadStatus() {
     renderSession(signedIn, status);
     return status;
   } catch (error) {
+    latestStatus = null;
+    renderSession(false, {});
     setStatus("error", "状态数据无效", "");
     return null;
   } finally {
@@ -108,6 +114,7 @@ async function loadStatus() {
 function renderSession(signedIn, status) {
   authenticated = signedIn;
   elements.accountSection.hidden = signedIn;
+  elements.sessionSection.hidden = !signedIn;
   elements.account.disabled = signedIn;
   elements.password.disabled = signedIn;
   elements.devicesSection.hidden = !signedIn;
@@ -274,8 +281,30 @@ async function save(event) {
   elements.save.disabled = false;
 }
 
+async function signOut() {
+  if (!authenticated || !window.confirm("确定退出当前账号？")) return;
+  elements.logout.disabled = true;
+  try {
+    const result = await exec(`${CONTROL} logout`);
+    if (result.errno !== 0) {
+      toast("退出登录失败");
+      return;
+    }
+    authenticated = false;
+    latestStatus = null;
+    elements.password.value = "";
+    renderSession(false, {});
+    await loadConfig();
+    await loadStatus();
+    toast("已退出登录");
+  } finally {
+    elements.logout.disabled = false;
+  }
+}
+
 elements.form.addEventListener("submit", save);
 elements.refresh.addEventListener("click", refreshPage);
+elements.logout.addEventListener("click", signOut);
 
 await loadConfig();
 await loadStatus();

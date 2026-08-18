@@ -85,6 +85,10 @@ func (c *APIClient) Refresh(ctx context.Context, refreshToken string) (RefreshRe
 	return response, err
 }
 
+func (c *APIClient) Logout(ctx context.Context, token string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/auth/logout", nil, token, nil, nil)
+}
+
 func (c *APIClient) Upload(ctx context.Context, token string, upload ClipUpload) (ClipCreateResponse, error) {
 	var response ClipCreateResponse
 	err := c.doJSON(ctx, http.MethodPost, "/v1/clips", nil, token, upload, &response)

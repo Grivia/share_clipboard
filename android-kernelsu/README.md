@@ -13,14 +13,16 @@ chmod +x scripts/build-module.sh
 ./scripts/build-module.sh
 ```
 
-Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.3.zip` from KernelSU Manager, reboot,
+Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.4.zip` from KernelSU Manager, reboot,
 then open the module WebUI. Enter the same account and password used by the
 macOS client. A missing account is registered automatically.
 
 After authentication succeeds, the WebUI removes the account and password
 fields and shows the devices that the server currently reports as online. The
 device list is fetched when the WebUI opens or its refresh button is pressed;
-the background synchronization loop does not poll the device endpoint.
+the background synchronization loop does not poll the device endpoint. The
+account section also provides a sign-out button that revokes the server session
+and removes local tokens, the encryption key, and pending uploads.
 
 The WebUI defaults to the production API at `https://zhy.hair/fastcopy`.
 
@@ -30,6 +32,7 @@ Runtime controls are also available over adb:
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl status
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl restart
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logs
+su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logout
 ```
 
 Persistent private state is stored with mode `0600` under `/data/adb/fastcopy`.

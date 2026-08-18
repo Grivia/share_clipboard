@@ -4,6 +4,7 @@ import Foundation
 enum SyncTiming {
     static let connectedReconciliationNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
     static let disconnectedReconciliationNanoseconds: UInt64 = 60 * 1_000_000_000
+    static let webSocketSessionCheckInterval: TimeInterval = 30
     private static let pendingRetrySeconds: [UInt64] = [2, 5, 15, 30, 60]
 
     static func pendingRetryNanoseconds(attempt: Int) -> UInt64 {
@@ -72,6 +73,8 @@ final class AppModel: ObservableObject {
     private var synchronizeAgain = false
     private var webSocket: URLSessionWebSocketTask?
     private var webSocketLoop: Task<Void, Never>?
+    private var webSocketGeneration: UInt = 0
+    private var lastWebSocketSessionCheckAt: Date?
     private var reconciliationTask: Task<Void, Never>?
     private var pendingRetryTask: Task<Void, Never>?
     private var pendingRetryAttempt = 0
@@ -160,8 +163,10 @@ final class AppModel: ObservableObject {
     }
 
     func logout() async {
-        if let token = accessToken {
-            try? await APIClient(baseURL: serverURL).logout(token: token)
+        if isAuthenticated {
+            try? await authorized { client, token in
+                try await client.logout(token: token)
+            }
         }
         clearAuthentication()
     }
@@ -182,6 +187,7 @@ final class AppModel: ObservableObject {
             }
             devices = response.devices
         } catch {
+            guard isAuthenticated else { return }
             errorText = userMessage(error)
         }
     }
@@ -194,6 +200,7 @@ final class AppModel: ObservableObject {
             }
             await refreshDevices()
         } catch {
+            guard isAuthenticated else { return }
             errorText = userMessage(error)
         }
     }
@@ -226,6 +233,7 @@ final class AppModel: ObservableObject {
         sharedKey = derivedKey
         devices = [response.device]
         isAuthenticated = true
+        errorText = nil
         statusText = "正在连接"
 
         defaults.set(serverURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.serverURL)
@@ -239,6 +247,8 @@ final class AppModel: ObservableObject {
 
     private func clearAuthentication() {
         stopSyncServices()
+        refreshTask?.cancel()
+        refreshTask = nil
         accessToken = nil
         refreshToken = nil
         userID = nil
@@ -257,7 +267,14 @@ final class AppModel: ObservableObject {
         secureStore.delete(Keys.accessToken)
         secureStore.delete(Keys.refreshToken)
         secureStore.delete(Keys.sharedKey)
+        errorText = nil
         statusText = "尚未登录"
+    }
+
+    private func expireAuthentication() {
+        clearAuthentication()
+        statusText = "登录已过期"
+        errorText = "登录状态已失效，请重新登录"
     }
 
     private func startSyncServices() async {
@@ -283,10 +300,12 @@ final class AppModel: ObservableObject {
         reconciliationTask?.cancel()
         reconciliationTask = nil
         clearPendingRetry()
+        webSocketGeneration &+= 1
         webSocketLoop?.cancel()
         webSocketLoop = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
+        lastWebSocketSessionCheckAt = nil
         isConnected = false
     }
 
@@ -327,6 +346,7 @@ final class AppModel: ObservableObject {
                 pendingStore.save(pendingUploads)
                 statusText = "剪贴板已同步"
             } catch {
+                guard isAuthenticated else { return }
                 statusText = "等待网络恢复"
                 errorText = userMessage(error)
                 schedulePendingRetry()
@@ -403,15 +423,21 @@ final class AppModel: ObservableObject {
                 statusText = "同步就绪"
             }
         } catch {
+            guard isAuthenticated else { return }
             statusText = "等待网络恢复"
             errorText = userMessage(error)
         }
     }
 
     private func startWebSocketLoop() {
+        webSocketGeneration &+= 1
+        let generation = webSocketGeneration
         webSocketLoop?.cancel()
+        webSocket?.cancel(with: .goingAway, reason: nil)
+        webSocket = nil
         webSocketLoop = Task { @MainActor [weak self] in
-            await self?.runWebSocketLoop()
+            guard let self else { return }
+            await self.runWebSocketLoop(generation: generation)
         }
     }
 
@@ -442,18 +468,25 @@ final class AppModel: ObservableObject {
         scheduleReconciliation()
     }
 
-    private func runWebSocketLoop() async {
+    private func runWebSocketLoop(generation: UInt) async {
         var delay: UInt64 = 1
-        while !Task.isCancelled && isAuthenticated && syncEnabled {
+        while webSocketGeneration == generation && !Task.isCancelled && isAuthenticated && syncEnabled {
             guard let token = accessToken else { return }
+            var activeSocket: URLSessionWebSocketTask?
             do {
                 let request = try APIClient(baseURL: serverURL).webSocketRequest(token: token)
                 let socket = URLSession.shared.webSocketTask(with: request)
+                guard webSocketGeneration == generation, !Task.isCancelled else {
+                    socket.cancel(with: .goingAway, reason: nil)
+                    return
+                }
+                activeSocket = socket
                 webSocket = socket
                 socket.resume()
 
-                while !Task.isCancelled {
+                while webSocketGeneration == generation && !Task.isCancelled {
                     let message = try await socket.receive()
+                    guard webSocketGeneration == generation, !Task.isCancelled else { return }
                     setConnectionState(true)
                     delay = 1
                     let data: Data
@@ -479,14 +512,46 @@ final class AppModel: ObservableObject {
                     }
                 }
             } catch {
-                setConnectionState(false)
-                webSocket = nil
-                if !Task.isCancelled {
-                    statusText = "正在重新连接"
-                    try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
-                    delay = min(delay * 2, 30)
+                guard webSocketGeneration == generation else {
+                    activeSocket?.cancel(with: .goingAway, reason: nil)
+                    return
                 }
+                if let activeSocket, webSocket === activeSocket {
+                    webSocket = nil
+                }
+                let wasConnected = isConnected
+                setConnectionState(false)
+                guard !Task.isCancelled, isAuthenticated, syncEnabled else { return }
+                let now = Date()
+                let sessionCheckDue = lastWebSocketSessionCheckAt.map {
+                    now.timeIntervalSince($0) >= SyncTiming.webSocketSessionCheckInterval
+                } ?? true
+                let shouldValidateSession = wasConnected || sessionCheckDue
+                if shouldValidateSession {
+                    lastWebSocketSessionCheckAt = now
+                    await validateSessionAfterWebSocketDisconnect()
+                }
+                guard webSocketGeneration == generation,
+                      !Task.isCancelled,
+                      isAuthenticated,
+                      syncEnabled else { return }
+                statusText = "正在重新连接"
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+                delay = min(delay * 2, 30)
             }
+        }
+    }
+
+    private func validateSessionAfterWebSocketDisconnect() async {
+        do {
+            let response: DevicesResponse = try await authorized { client, token in
+                try await client.devices(token: token)
+            }
+            guard isAuthenticated else { return }
+            devices = response.devices
+        } catch {
+            // A temporary network failure should keep the local session. `authorized`
+            // clears it only after the server confirms that the session is invalid.
         }
     }
 
@@ -502,14 +567,22 @@ final class AppModel: ObservableObject {
         } catch let error as APIClientError where error.isUnauthorized {
             do {
                 try await refreshSession(client: client)
-            } catch {
-                clearAuthentication()
-                throw error
+            } catch let refreshError as APIClientError where refreshError.isUnauthorized {
+                expireAuthentication()
+                throw refreshError
+            } catch let refreshError {
+                throw refreshError
             }
             guard let renewedToken = accessToken else {
+                expireAuthentication()
                 throw APIClientError.server(status: 401, code: "SESSION_EXPIRED", message: "登录已过期")
             }
-            return try await operation(client, renewedToken)
+            do {
+                return try await operation(client, renewedToken)
+            } catch let retryError as APIClientError where retryError.isUnauthorized {
+                expireAuthentication()
+                throw retryError
+            }
         }
     }
 
@@ -570,7 +643,7 @@ final class AppModel: ObservableObject {
             reportedName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             platform: "macos",
             osVersion: "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.2"
         )
     }
 

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -122,7 +123,86 @@ func runUtility(stores *Stores, args []string) error {
 			return fmt.Errorf("usage: fastcopyd config-set <base64-json>")
 		}
 		return stores.SaveEncodedUserConfig(args[1])
+	case "logout":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: fastcopyd logout")
+		}
+		return logoutSession(stores)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func logoutSession(stores *Stores) error {
+	user, err := stores.LoadUserConfig()
+	if err != nil {
+		return err
+	}
+	runtime, err := stores.LoadRuntime()
+	if err != nil {
+		return err
+	}
+
+	if runtime.AccessToken != "" || runtime.RefreshToken != "" {
+		if api, apiErr := NewAPIClient(user.ServerURL); apiErr != nil {
+			log.Printf("remote logout skipped: %v", apiErr)
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			remoteErr := revokeRemoteSession(ctx, api, runtime)
+			cancel()
+			if remoteErr != nil {
+				log.Printf("remote logout failed; clearing local session: %v", remoteErr)
+			}
+		}
+	}
+
+	return clearLocalSession(stores, user, runtime)
+}
+
+func clearLocalSession(stores *Stores, user UserConfig, runtime RuntimeState) error {
+	user.Password = ""
+	runtime.ClearAuthentication()
+	if err := stores.SaveUserConfig(user); err != nil {
+		return err
+	}
+	if err := stores.SaveRuntime(runtime); err != nil {
+		return err
+	}
+	if err := stores.SavePending([]ClipUpload{}); err != nil {
+		return err
+	}
+	return writeJSONAtomic(stores.StatusPath, DaemonStatus{
+		State:         "unconfigured",
+		Message:       "Signed out",
+		OnlineDevices: []DeviceSummary{},
+		Version:       daemonVersion,
+		UpdatedAt:     time.Now().UTC(),
+	})
+}
+
+func revokeRemoteSession(ctx context.Context, api *APIClient, runtime RuntimeState) error {
+	if runtime.AccessToken != "" {
+		err := api.Logout(ctx, runtime.AccessToken)
+		if err == nil {
+			return nil
+		}
+		if !isUnauthorized(err) {
+			return err
+		}
+	}
+	if runtime.RefreshToken == "" {
+		return nil
+	}
+	response, err := api.Refresh(ctx, runtime.RefreshToken)
+	if isUnauthorized(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	err = api.Logout(ctx, response.Tokens.AccessToken)
+	if isUnauthorized(err) {
+		return nil
+	}
+	return err
 }

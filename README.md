@@ -11,10 +11,10 @@
 | 组件 | 状态 | 运行环境 | 当前版本 |
 | --- | --- | --- | --- |
 | 服务端 | 可用 | Linux / Docker，Go 1.25，PostgreSQL 17 | 协议 v1 |
-| macOS | 可用 | macOS 13 及以上 | 0.2.1 |
+| macOS | 可用 | macOS 13 及以上 | 0.2.2 |
 | Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.1 |
 | Android | 可用 | Android 10 及以上 | 0.1.0 |
-| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.3 |
+| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.4 |
 | iOS | 可用 | iOS 17 及以上，APNs | 0.1.0 |
 | Linux 桌面端 | 尚未实现 | 服务端协议已预留 `linux` 平台类型 | - |
 
@@ -185,7 +185,7 @@ open 'dist/粘贴板助手.app'
 
 ```text
 macos/dist/粘贴板助手.app
-macos/dist/粘贴板助手-macos-v0.2.1.zip
+macos/dist/粘贴板助手-macos-v0.2.2.zip
 ```
 
 应用以 `LSUIElement` 方式运行，只显示在 macOS 菜单栏，不占用 Dock。菜单可以暂停同步、立即同步、打开设备与设置窗口或退出应用。
@@ -270,10 +270,10 @@ chmod +x scripts/build-module.sh
 产物：
 
 ```text
-android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.3.zip
+android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.4.zip
 ```
 
-在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示当前在线设备；设备列表只在打开页面或手动刷新时请求，不在后台持续轮询。
+在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示当前在线设备和退出登录按钮；设备列表只在打开页面或手动刷新时请求，不在后台持续轮询。退出登录会撤销服务端会话，并清除模块本地的令牌、加密密钥和待上传内容。
 
 模块由两个进程职责组成：
 
@@ -288,6 +288,7 @@ android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.3.zip
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl status
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl restart
 su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logs
+su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logout
 ```
 
 模块 ID 和私有数据目录仍保留内部名称 `fastcopy_kernelsu` 与 `/data/adb/fastcopy`，用于兼容已经安装的旧版本和原有登录状态。

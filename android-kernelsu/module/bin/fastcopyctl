@@ -122,6 +122,17 @@ refresh_devices() {
     echo "Device refresh requested"
 }
 
+logout() {
+    if is_running; then
+        stop || return 1
+    fi
+    if ! "$BINARY" logout; then
+        echo "Unable to clear the FastCopy session" >&2
+        return 1
+    fi
+    echo "FastCopy signed out"
+}
+
 case "${1:-status}" in
     start)
         start
@@ -142,6 +153,9 @@ case "${1:-status}" in
     refresh-devices)
         refresh_devices
         ;;
+    logout)
+        logout
+        ;;
     config-get)
         "$BINARY" config-get
         ;;
@@ -153,7 +167,7 @@ case "${1:-status}" in
         "$BINARY" config-set "$2"
         ;;
     *)
-        echo "usage: fastcopyctl {start|stop|restart|status|logs|refresh-devices|config-get|config-set}" >&2
+        echo "usage: fastcopyctl {start|stop|restart|status|logs|refresh-devices|logout|config-get|config-set}" >&2
         exit 2
         ;;
 esac

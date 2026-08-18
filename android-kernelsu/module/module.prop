@@ -1,6 +1,6 @@
 id=fastcopy_kernelsu
 name=粘贴板助手
-version=0.3.3
-versionCode=8
+version=0.3.4
+versionCode=9
 author=Rivia
 description=端到端加密的跨设备文本剪贴板同步

@@ -253,6 +253,14 @@ button:disabled {
   margin-top: 10px;
 }
 
+.danger {
+  width: 100%;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+  font-weight: 650;
+}
+
 details {
   margin-top: 22px;
   color: var(--muted);

@@ -12,7 +12,7 @@ chmod +x scripts/build-app.sh
 open 'dist/粘贴板助手.app'
 ```
 
-The same command also creates `dist/粘贴板助手-macos-v0.2.1.zip` for transfer to
+The same command also creates `dist/粘贴板助手-macos-v0.2.2.zip` for transfer to
 another Mac.
 
 WebSocket events trigger immediate cursor synchronization. A healthy connection

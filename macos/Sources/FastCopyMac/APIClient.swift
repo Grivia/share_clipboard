@@ -27,7 +27,7 @@ enum APIClientError: LocalizedError {
 struct APIClient {
     let baseURL: String
     private let session: URLSession
-    private static let userAgent = "FastCopyMac/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1")"
+    private static let userAgent = "FastCopyMac/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.2")"
 
     init(baseURL: String, session: URLSession = .shared) {
         self.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
