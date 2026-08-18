@@ -62,6 +62,9 @@ func (a *API) createClip(w http.ResponseWriter, r *http.Request) {
 			Type: "clip.created",
 			Data: result.Event,
 		})
+		if a.pushNotifier != nil {
+			a.pushNotifier.ClipCreated(principal.UserID, principal.DeviceID, result.Event.Seq)
+		}
 		writeJSON(w, http.StatusCreated, result)
 		return
 	}

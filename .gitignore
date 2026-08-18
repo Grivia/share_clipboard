@@ -10,6 +10,13 @@ android-kernelsu/daemon/bin/
 android-kernelsu/bridge/build/
 android-kernelsu/build/
 android-kernelsu/dist/
+android/.gradle/
+android/local.properties
+android/app/build/
+ios/build/
+ios/DerivedData/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
 windows/src/*/bin/
 windows/src/*/obj/
 windows/tests/*/bin/

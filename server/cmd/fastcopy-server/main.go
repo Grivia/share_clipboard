@@ -13,6 +13,7 @@ import (
 	"fastcopy/server/internal/api"
 	"fastcopy/server/internal/config"
 	"fastcopy/server/internal/hub"
+	"fastcopy/server/internal/push"
 	"fastcopy/server/internal/store"
 )
 
@@ -38,7 +39,13 @@ func main() {
 	}
 
 	connectionHub := hub.New()
-	handler := api.New(cfg, dataStore, connectionHub).Handler()
+	pushService, err := push.New(cfg, dataStore)
+	if err != nil {
+		slog.Error("push configuration failed", "error", err)
+		os.Exit(1)
+	}
+	go pushService.Run(ctx)
+	handler := api.New(cfg, dataStore, connectionHub, pushService).Handler()
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

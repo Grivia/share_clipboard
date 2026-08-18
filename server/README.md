@@ -23,3 +23,25 @@ Clipboard payloads must already be AES-256-GCM encrypted. See
 deployment: registration is serialized with a PostgreSQL advisory lock, so
 only the first account can be created even when requests arrive concurrently.
 Concurrent first requests for the same account converge on the same account.
+
+## iOS push notifications
+
+The iOS client uploads its APNs device token with
+`PUT /v1/push-tokens/apns`. Tokens are bound to the authenticated iOS device
+and removed automatically when the device is revoked or APNs reports a
+permanently invalid token.
+
+APNs is disabled by default. To enable it, mount an Apple token-signing `.p8`
+file into the container and configure all of the following variables:
+
+```sh
+FASTCOPY_APNS_ENABLED=true
+FASTCOPY_APNS_KEY_ID=ABC123DEFG
+FASTCOPY_APNS_TEAM_ID=0123456789
+FASTCOPY_APNS_BUNDLE_ID=hair.zhy.fastcopy.ios
+FASTCOPY_APNS_PRIVATE_KEY_PATH=/run/secrets/apns-auth-key.p8
+```
+
+Push payloads contain only generic UI text and event metadata. Clipboard
+plaintext and ciphertext are not sent through APNs; the client uses the push
+as a wake-up signal and fetches encrypted events through the normal cursor API.

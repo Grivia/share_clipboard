@@ -23,6 +23,28 @@ The production environment sets `FASTCOPY_MAX_USERS=1`. The first account can
 be created through the unified authentication endpoint; subsequent requests
 with that account log in automatically.
 
+The APNs token API and `device_push_tokens` migration are deployed. APNs
+sending currently remains disabled until an Apple token-signing key is added.
+
+## Enable APNs
+
+1. Put the Apple `.p8` key outside the Git repository, for example at
+   `share_clipboard/secrets/apns-auth-key.p8`, and restrict its permissions.
+2. Mount it read-only into `share_clipboard_server` as
+   `/run/secrets/apns-auth-key.p8`.
+3. Add the following values to `share_clipboard/.env`:
+
+```dotenv
+FASTCOPY_APNS_ENABLED=true
+FASTCOPY_APNS_KEY_ID=<Apple Key ID>
+FASTCOPY_APNS_TEAM_ID=<Apple Team ID>
+FASTCOPY_APNS_BUNDLE_ID=hair.zhy.fastcopy.ios
+FASTCOPY_APNS_PRIVATE_KEY_PATH=/run/secrets/apns-auth-key.p8
+```
+
+Then recreate the service and check that its startup log says
+`APNs notifications enabled`. Never commit the `.p8` key or production `.env`.
+
 ## Operations
 
 Run these commands from `/Volumes/SSD_ZHITAI/my-cloudflared-app`:

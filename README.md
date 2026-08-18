@@ -4,7 +4,7 @@
 
 在一台设备上复制文本后，粘贴板助手会在本地加密内容，经服务端通知其他在线设备更新剪贴板。服务端只保存密文、设备信息和同步游标，无法读取剪贴板明文。
 
-当前仓库已实现 Go 服务端、macOS 菜单栏客户端、Windows 托盘客户端，以及适用于已 Root Android 设备的 KernelSU 模块。
+当前仓库已实现 Go 服务端、macOS 菜单栏客户端、Windows 托盘客户端、普通 Android 客户端、iOS 客户端，以及适用于已 Root Android 设备的 KernelSU 模块。
 
 ## 当前状态
 
@@ -13,11 +13,12 @@
 | 服务端 | 可用 | Linux / Docker，Go 1.25，PostgreSQL 17 | 协议 v1 |
 | macOS | 可用 | macOS 13 及以上 | 0.2.1 |
 | Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.1 |
+| Android | 可用 | Android 10 及以上 | 0.1.0 |
 | Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.3 |
-| iOS | 尚未实现 | 受系统后台剪贴板权限限制 | - |
+| iOS | 可用 | iOS 17 及以上，APNs | 0.1.0 |
 | Linux 桌面端 | 尚未实现 | 服务端协议已预留 `linux` 平台类型 | - |
 
-Android 模块目前已在 MIUI Android 13、KernelSU 0.9.5 上进行过真机验证。Android 10 至 Android 16 的其他 AOSP 衍生系统属于预期兼容范围，仍需根据具体 ROM 实测。
+Android KernelSU 模块目前已在 MIUI Android 13、KernelSU 0.9.5 上进行过真机验证。Android 10 至 Android 16 的其他 AOSP 衍生系统属于预期兼容范围，仍需根据具体 ROM 实测。
 
 ## 主要能力
 
@@ -38,10 +39,14 @@ flowchart LR
     A["macOS 菜单栏"] -->|"HTTPS：加密上传与游标同步"| S["Go 服务端"]
     W["Windows 托盘"] -->|"HTTPS：加密上传与游标同步"| S
     K["Android KernelSU"] -->|"HTTPS：加密上传与游标同步"| S
+    D["Android App"] -->|"HTTPS：前台同步与后台补拉"| S
+    I["iOS App"] -->|"HTTPS：前台同步与后台补拉"| S
     S --> P["PostgreSQL：密文、设备、会话、游标"]
     S -.->|"WebSocket：新事件唤醒信号"| A
     S -.->|"WebSocket：新事件唤醒信号"| W
     S -.->|"WebSocket：新事件唤醒信号"| K
+    S -.->|"WebSocket：前台唤醒"| D
+    S -.->|"WebSocket + APNs"| I
 ```
 
 一次本地复制会经过以下步骤：
@@ -50,7 +55,7 @@ flowchart LR
 2. 客户端生成随机 `client_event_id` 和 12 字节随机 nonce。
 3. 客户端以本地派生的 256 位密钥进行 AES-GCM 加密。
 4. 完整的加密请求先写入本机待发送队列，再通过 `POST /v1/clips` 上传。
-5. 服务端保存密文，按 `(origin_device_id, client_event_id)` 保证幂等，并通过 WebSocket 通知该账号的其他在线设备。
+5. 服务端保存密文，按 `(origin_device_id, client_event_id)` 保证幂等，并通过 WebSocket 通知在线设备、通过 APNs 唤醒 iOS 设备。
 6. 接收端使用已持久化的 `after_seq` 游标调用 REST 接口拉取事件，在本地解密后写入系统剪贴板。
 7. 接收端确认新的序号。WebSocket 丢失或网络中断时，下次游标同步仍能补回遗漏事件。
 
@@ -82,6 +87,8 @@ fastcopy:v1|<client_event_id>|text/plain
 | macOS | 访问令牌、刷新令牌和派生密钥保存在 Keychain；待上传队列只包含密文 |
 | Windows | 凭据和派生密钥由当前 Windows 用户的 DPAPI 保护；待上传队列只包含密文 |
 | Android KernelSU | 私有状态保存在 `/data/adb/fastcopy`，目录权限 `0700`、文件权限 `0600`；首次认证后配置中的密码会被删除 |
+| Android | 令牌和派生密钥使用 Android Keystore 加密；DataStore 中只保存密文队列与游标 |
+| iOS | 令牌和派生密钥保存在 Keychain；UserDefaults 中只保存密文队列与游标 |
 | 服务端 | 密码使用 Argon2id 加盐哈希；剪贴板仅保存 AES-GCM 密文 |
 
 服务端仍然能够看到必要的元数据，例如账号、设备名称、平台、在线状态、事件时间、密文长度和来源设备，但看不到剪贴板明文。
@@ -95,7 +102,9 @@ fastcopy:v1|<client_event_id>|text/plain
 ├── server/               Go HTTP/WebSocket 服务端与 PostgreSQL 迁移
 ├── macos/                SwiftUI 菜单栏客户端
 ├── windows/              .NET 8 Windows Forms 托盘客户端
+├── android/              Kotlin、Jetpack Compose Material 3 普通客户端
 ├── android-kernelsu/     KernelSU 模块、Go 守护进程和 Java 剪贴板桥
+├── ios/                  SwiftUI 原生客户端与 APNs 接入
 ├── shared/API.md         跨平台协议 v1
 └── deploy/               本地 Compose 与当前生产部署说明
 ```
@@ -105,7 +114,9 @@ fastcopy:v1|<client_event_id>|text/plain
 - [服务端说明](server/README.md)
 - [macOS 客户端说明](macos/README.md)
 - [Windows 客户端说明](windows/README.md)
+- [Android 客户端说明](android/README.md)
 - [Android KernelSU 模块说明](android-kernelsu/README.md)
+- [iOS 客户端说明](ios/README.md)
 - [API 与加密协议](shared/API.md)
 - [生产部署记录](deploy/PRODUCTION.md)
 
@@ -213,6 +224,28 @@ windows\dist\ClipboardAssistant-windows-win-x64-v0.1.1.zip
 
 当前构建没有 Authenticode 代码签名，从网络下载后 Windows SmartScreen 可能提示未知发布者。正式公开分发前应使用受信任的代码签名证书签名。
 
+### Android
+
+要求 JDK 17 或更高版本、Android SDK 36 和 Build Tools 36.1.0：
+
+```bash
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
+
+调试 APK 位于 `android/app/build/outputs/apk/debug/app-debug.apk`。客户端采用单 Activity、Jetpack Compose Material 3、ViewModel/UDF、DataStore、WorkManager 和 Repository 分层。应用位于前台时监听剪贴板并保持 WebSocket；退到后台后不读取剪贴板，由 WorkManager 定期拉取密文并显示通知。Android 端目前不接入 Push。
+
+### iOS
+
+要求 Xcode、iOS 17 SDK；仓库已包含可直接打开的 Xcode 工程：
+
+```bash
+cd ios
+open ClipboardAssistant.xcodeproj
+```
+
+若修改 `ios/project.yml`，安装 XcodeGen 后执行 `xcodegen generate`。客户端使用 SwiftUI 原生控件、Keychain、URLSession WebSocket 和 APNs。正式真机安装与 Push 测试需要 Apple Developer Team、启用 Push Notifications 的 App ID，以及服务端 APNs `.p8` 密钥配置，详见 [`ios/README.md`](ios/README.md)。
+
 ### Android KernelSU
 
 要求：
@@ -273,15 +306,15 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logs
 
 ## 同步与重试策略
 
-| 场景 | macOS | Windows | Android KernelSU |
-| --- | --- | --- | --- |
-| 本地剪贴板监听 | 每 1 秒检查 `NSPasteboard.changeCount` | Windows `WM_CLIPBOARDUPDATE` 事件 | 系统回调 + 700ms 本地兜底轮询 |
-| WebSocket 已连接 | 收到事件立即同步，5 分钟安全校验 | 收到事件立即同步，5 分钟安全校验 | 收到事件立即同步，5 分钟安全校验 |
-| WebSocket 已断开 | 每 1 分钟 REST 校验 | 每 1 分钟 REST 校验 | 每 30 秒 REST 校验 |
-| 网络上传失败 | 2 / 5 / 15 / 30 / 60 秒退避 | 2 / 5 / 15 / 30 / 60 秒退避 | 2 / 5 / 15 / 30 / 60 秒退避 |
-| Android 锁屏写入失败 | - | - | 每 10 秒重试，不推进游标 |
+| 场景 | macOS / Windows | Android | iOS | Android KernelSU |
+| --- | --- | --- | --- | --- |
+| 本地剪贴板监听 | 应用常驻时监听 | 仅前台系统回调 | 仅前台系统通知 | 系统回调 + 700ms 本地兜底轮询 |
+| 即时事件 | WebSocket | 前台 WebSocket | 前台 WebSocket、后台 APNs | WebSocket |
+| 可靠补偿 | 定期 REST 游标校验 | WorkManager 定期补拉 | Push 唤醒补拉、前台补拉 | 定期 REST 游标校验 |
+| 后台写剪贴板 | 支持 | 不支持 | 不支持 | 支持，受 ROM 与锁屏状态影响 |
+| 网络上传失败 | 持久化密文队列 | 持久化密文队列 | 持久化密文队列 | 退避重试 |
 
-单条明文上限约为 256 KiB，服务端密文上限为 256 KiB。macOS 和 Windows 最多保留最近 100 条待发送密文，Android 模块最多保留最近 20 条。
+单条明文上限约为 256 KiB，服务端密文上限为 256 KiB。macOS、Windows、普通 Android 和 iOS 最多保留最近 100 条待发送密文，Android KernelSU 模块最多保留最近 20 条。
 
 ## 服务端配置
 
@@ -298,6 +331,11 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logs
 | `FASTCOPY_REFRESH_TOKEN_TTL` | `2160h` | 刷新令牌有效期，默认 90 天 |
 | `FASTCOPY_CLIP_TTL` | `168h` | 剪贴板密文保留时间，默认 7 天 |
 | `FASTCOPY_IDEMPOTENCY_TTL` | `720h` | 幂等记录保留时间，默认 30 天，不能短于密文保留时间 |
+| `FASTCOPY_APNS_ENABLED` | `false` | 是否启用 APNs 发送 |
+| `FASTCOPY_APNS_KEY_ID` | 无 | Apple APNs signing key ID |
+| `FASTCOPY_APNS_TEAM_ID` | 无 | Apple Developer Team ID |
+| `FASTCOPY_APNS_BUNDLE_ID` | `hair.zhy.fastcopy.ios` | iOS App Bundle ID / APNs topic |
+| `FASTCOPY_APNS_PRIVATE_KEY_PATH` | 无 | 容器内 APNs `.p8` 私钥路径 |
 
 参考配置位于 [`server/.env.example`](server/.env.example)。生产环境不要沿用开发 Compose 中的密码，也不要把 `.env`、数据库目录、令牌或备份提交到 Git。
 
@@ -310,6 +348,7 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logs
 - `clip_idempotency`：上传请求摘要与幂等结果。
 - `device_cursors`：每台设备最后确认的事件序号。
 - `login_events`：登录审计记录。
+- `device_push_tokens`：iOS 设备的 APNs token 与 sandbox/production 环境。
 
 数据库外键和唯一索引会约束用户、设备、会话和事件之间的关系。例如，设备必须属于一个真实用户，会话必须指向同一用户的真实设备，同一来源设备不能重复插入相同的客户端事件 ID。
 
@@ -330,6 +369,8 @@ Authorization: Bearer <access_token>
 | `GET` | `/v1/devices` | 获取历史设备、登录和在线状态 |
 | `PATCH` | `/v1/devices/{device_id}` | 修改设备显示名称 |
 | `POST` | `/v1/devices/{device_id}/revoke` | 移除设备并撤销其全部会话 |
+| `PUT` | `/v1/push-tokens/apns` | iOS 注册或更新当前设备的 APNs token |
+| `DELETE` | `/v1/push-tokens/apns` | 删除当前设备的 APNs token |
 | `POST` | `/v1/clips` | 上传加密剪贴板事件 |
 | `GET` | `/v1/clips?after_seq=0&limit=100` | 按游标拉取加密事件 |
 | `POST` | `/v1/sync/ack` | 确认设备已处理的序号 |
@@ -360,6 +401,15 @@ macOS 测试：
 cd macos
 swift test
 ```
+
+普通 Android 构建与测试：
+
+```bash
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
+
+iOS 构建与测试命令见 [`ios/README.md`](ios/README.md)，当前协议测试覆盖 PBKDF2 固定向量和 AES-GCM Unicode 文本往返。
 
 Android 守护进程测试：
 
@@ -405,8 +455,9 @@ share_clipboard_server
 
 - 只同步纯文本。
 - 剪贴板事件会按 TTL 自动清理，本项目不是永久剪贴板历史或备份工具。
-- iOS 无法像桌面端或 Root Android 一样长期在后台任意读取、写入系统剪贴板，因此尚未提供 iOS 客户端。
-- Android KernelSU 方案要求 Root，不适合普通未 Root Android 用户。
+- iOS 和普通 Android 无法像桌面端或 Root Android 一样长期在后台任意读取、写入系统剪贴板；后台只拉取密文并提醒，回到前台后才写入剪贴板。
+- iOS APNs 是尽力而为的唤醒机制，系统可能延迟或合并通知；游标补拉负责最终补偿。
+- Android KernelSU 方案要求 Root；普通 Android 客户端不具备同等后台剪贴板能力。
 - Android 当前只处理主用户 user 0；部分 ROM 在锁屏时禁止读取或写入剪贴板。
 - 公开发布的 macOS 和 Windows 构建尚未接入正式代码签名流程。
 - 当前没有账号密码修改、恢复和端到端密钥轮换功能。忘记密码后，服务端无法恢复历史剪贴板明文。

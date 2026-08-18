@@ -14,14 +14,25 @@ type API struct {
 	store        *store.Store
 	hub          *hub.Hub
 	loginLimiter *limiter
+	pushNotifier PushNotifier
 }
 
-func New(cfg config.Config, dataStore *store.Store, connectionHub *hub.Hub) *API {
+type PushNotifier interface {
+	ClipCreated(userID, originDeviceID string, seq int64)
+}
+
+func New(
+	cfg config.Config,
+	dataStore *store.Store,
+	connectionHub *hub.Hub,
+	pushNotifier PushNotifier,
+) *API {
 	return &API{
 		config:       cfg,
 		store:        dataStore,
 		hub:          connectionHub,
 		loginLimiter: newLimiter(10, 15*time.Minute),
+		pushNotifier: pushNotifier,
 	}
 }
 
@@ -34,6 +45,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/devices", a.authenticate(a.devices))
 	mux.HandleFunc("PATCH /v1/devices/{deviceID}", a.authenticate(a.renameDevice))
 	mux.HandleFunc("POST /v1/devices/{deviceID}/revoke", a.authenticate(a.revokeDevice))
+	mux.HandleFunc("PUT /v1/push-tokens/apns", a.authenticate(a.putAPNsToken))
+	mux.HandleFunc("DELETE /v1/push-tokens/apns", a.authenticate(a.deleteAPNsToken))
 	mux.HandleFunc("POST /v1/clips", a.authenticate(a.createClip))
 	mux.HandleFunc("GET /v1/clips", a.authenticate(a.clips))
 	mux.HandleFunc("POST /v1/sync/ack", a.authenticate(a.ack))

@@ -89,6 +89,10 @@ func (s *Store) RevokeDevice(ctx context.Context, userID, deviceID string) error
 		WHERE device_id = $1 AND revoked_at IS NULL`, deviceID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM device_push_tokens WHERE device_id = $1`, deviceID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 

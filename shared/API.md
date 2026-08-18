@@ -125,3 +125,31 @@ Connect to `GET /v1/events/ws` with the access token header. Events are JSON:
 
 WebSocket delivery is opportunistic. On every reconnect, clients call the
 clipboard GET endpoint with their persisted `after_seq` cursor.
+
+## APNs device tokens
+
+Only authenticated devices whose platform is `ios` may register an APNs token:
+
+- `PUT /v1/push-tokens/apns`
+- `DELETE /v1/push-tokens/apns`
+
+Registration body:
+
+```json
+{
+  "token": "lowercase-hex-device-token",
+  "environment": "sandbox"
+}
+```
+
+`environment` is `sandbox` for development builds and `production` for App
+Store, TestFlight, Ad Hoc, and other distribution builds. A new token replaces
+the previous token for that device. Clients register with APNs on every launch
+and upload the token returned by the operating system instead of treating a
+locally cached token as authoritative.
+
+The server sends an alert notification with `content-available: 1`. Its custom
+payload includes only `type`, `seq`, and `origin_device_id`; it never includes
+clipboard plaintext, ciphertext, account names, or credentials. Delivery is a
+best-effort wake-up signal. The persisted event cursor remains the source of
+truth.

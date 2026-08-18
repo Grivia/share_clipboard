@@ -83,6 +83,8 @@ func storeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session is invalid or expired")
 	case store.ErrDeviceNotFound:
 		writeError(w, http.StatusNotFound, "DEVICE_NOT_FOUND", "device was not found")
+	case store.ErrPushNotSupported:
+		writeError(w, http.StatusBadRequest, "PUSH_NOT_SUPPORTED", "push notifications are only supported for iOS devices")
 	case store.ErrEventIDReused:
 		writeError(w, http.StatusConflict, "CLIENT_EVENT_ID_REUSED", "client_event_id was already used with different content")
 	default:

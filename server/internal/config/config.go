@@ -17,6 +17,11 @@ type Config struct {
 	RefreshTokenTTL     time.Duration
 	ClipTTL             time.Duration
 	IdempotencyTTL      time.Duration
+	APNsEnabled         bool
+	APNsKeyID           string
+	APNsTeamID          string
+	APNsBundleID        string
+	APNsPrivateKeyPath  string
 }
 
 func Load() (Config, error) {
@@ -25,6 +30,11 @@ func Load() (Config, error) {
 		DatabaseURL:         os.Getenv("FASTCOPY_DATABASE_URL"),
 		PublicBaseURL:       env("FASTCOPY_PUBLIC_BASE_URL", "http://localhost:8083"),
 		RegistrationEnabled: envBool("FASTCOPY_REGISTRATION_ENABLED", true),
+		APNsEnabled:         envBool("FASTCOPY_APNS_ENABLED", false),
+		APNsKeyID:           os.Getenv("FASTCOPY_APNS_KEY_ID"),
+		APNsTeamID:          os.Getenv("FASTCOPY_APNS_TEAM_ID"),
+		APNsBundleID:        env("FASTCOPY_APNS_BUNDLE_ID", "hair.zhy.fastcopy.ios"),
+		APNsPrivateKeyPath:  os.Getenv("FASTCOPY_APNS_PRIVATE_KEY_PATH"),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("FASTCOPY_DATABASE_URL is required")
@@ -51,6 +61,10 @@ func Load() (Config, error) {
 	}
 	if cfg.IdempotencyTTL < cfg.ClipTTL {
 		return Config{}, fmt.Errorf("FASTCOPY_IDEMPOTENCY_TTL must be at least FASTCOPY_CLIP_TTL")
+	}
+	if cfg.APNsEnabled && (cfg.APNsKeyID == "" || cfg.APNsTeamID == "" ||
+		cfg.APNsBundleID == "" || cfg.APNsPrivateKeyPath == "") {
+		return Config{}, fmt.Errorf("APNs is enabled but its key ID, team ID, bundle ID, or private key path is missing")
 	}
 	return cfg, nil
 }
