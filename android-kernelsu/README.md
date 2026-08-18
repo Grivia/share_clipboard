@@ -1,4 +1,4 @@
-# FastCopy KernelSU module
+# 粘贴板助手 KernelSU 模块
 
 This is an arm64 KernelSU module for Android 10 and newer. A Go daemon owns the
 network connection, encrypted retry queue, and cursor recovery. A small Java
@@ -13,7 +13,7 @@ chmod +x scripts/build-module.sh
 ./scripts/build-module.sh
 ```
 
-Install `dist/fastcopy-kernelsu-arm64-v0.3.3.zip` from KernelSU Manager, reboot,
+Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.3.zip` from KernelSU Manager, reboot,
 then open the module WebUI. Enter the same account and password used by the
 macOS client. A missing account is registered automatically.
 

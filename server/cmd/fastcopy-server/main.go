@@ -49,7 +49,7 @@ func main() {
 
 	go cleanupLoop(ctx, dataStore)
 	go func() {
-		slog.Info("FastCopy server started", "address", cfg.ListenAddr, "public_url", cfg.PublicBaseURL)
+		slog.Info("clipboard assistant server started", "address", cfg.ListenAddr, "public_url", cfg.PublicBaseURL)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("HTTP server failed", "error", err)
 			stop()

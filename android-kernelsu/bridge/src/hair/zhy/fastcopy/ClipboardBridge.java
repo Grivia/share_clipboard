@@ -166,7 +166,7 @@ public final class ClipboardBridge {
 
     private void setText(String text) {
         try {
-            clipboard.setPrimaryClip(ClipData.newPlainText("FastCopy", text));
+            clipboard.setPrimaryClip(ClipData.newPlainText("粘贴板助手", text));
             lastText = text;
             initialized = true;
             String applied = readText();

@@ -11,7 +11,9 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>FastCopy</string>
+    <string>粘贴板助手</string>
+    <key>CFBundleDisplayName</key>
+    <string>粘贴板助手</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

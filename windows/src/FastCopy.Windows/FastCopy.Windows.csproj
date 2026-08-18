@@ -8,8 +8,11 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>FastCopy</AssemblyName>
+    <AssemblyName>ClipboardAssistant</AssemblyName>
     <RootNamespace>FastCopy.Windows</RootNamespace>
+    <Title>粘贴板助手</Title>
+    <Product>粘贴板助手</Product>
+    <Description>端到端加密的跨设备文本剪贴板同步工具</Description>
     <Version>0.1.1</Version>
   </PropertyGroup>
 

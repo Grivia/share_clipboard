@@ -22,12 +22,12 @@ struct FastCopyMacApp: App {
                 .environmentObject(model)
         } label: {
             Image(systemName: model.statusIcon)
-                .accessibilityLabel("FastCopy")
+                .accessibilityLabel("粘贴板助手")
                 .task { await model.start() }
         }
         .menuBarExtraStyle(.menu)
 
-        Window("FastCopy", id: "settings") {
+        Window("粘贴板助手", id: "settings") {
             SettingsView()
                 .environmentObject(model)
                 .frame(minWidth: 440, minHeight: 390)
@@ -71,7 +71,7 @@ private struct MenuContent: View {
         Button {
             NSApp.terminate(nil)
         } label: {
-            Label("退出 FastCopy", systemImage: "power")
+            Label("退出粘贴板助手", systemImage: "power")
         }
     }
 }

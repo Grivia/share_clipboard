@@ -1,8 +1,8 @@
-# FastCopy
+# 粘贴板助手
 
 快速多端共享粘贴板。
 
-FastCopy is an end-to-end encrypted clipboard synchronizer. This repository
+粘贴板助手 is an end-to-end encrypted clipboard synchronizer. This repository
 contains the cross-platform service and clients:
 
 - `server/`: Go API, PostgreSQL persistence, and WebSocket presence/events.
@@ -27,9 +27,10 @@ existing Nginx and Cloudflare Tunnel stack.
 
 Build artifacts:
 
-- macOS: `macos/dist/FastCopy.app` and `macos/dist/FastCopy-macos-v0.2.1.zip`
-- KernelSU arm64: `android-kernelsu/dist/fastcopy-kernelsu-arm64-v0.3.3.zip`
-- Windows x64: `windows/dist/win-x64/FastCopy.exe` and the corresponding zip
+- macOS: `macos/dist/粘贴板助手.app` and its versioned zip archive
+- KernelSU arm64: `android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.3.zip`
+- Windows x64: `windows/dist/clipboard-assistant-win-x64/ClipboardAssistant.exe`
+  and the corresponding zip
 
 The production server accepts one account. Submit the account and password on
 any client: the first request creates the account, and later requests sign in.

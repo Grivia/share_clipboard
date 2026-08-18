@@ -1,4 +1,4 @@
-# FastCopy protocol v1
+# 粘贴板助手协议 v1
 
 All API requests use JSON over HTTPS. Native clients send the access token in
 `Authorization: Bearer <token>`. Clipboard plaintext is encrypted by clients

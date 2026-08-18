@@ -21,8 +21,8 @@ internal static class Program
         if (!ownsMutex)
         {
             MessageBox.Show(
-                "FastCopy 已经在运行，请查看任务栏通知区域。",
-                "FastCopy",
+                "粘贴板助手已经在运行，请查看任务栏通知区域。",
+                "粘贴板助手",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -34,8 +34,8 @@ internal static class Program
         {
             AppLog.Error("Unhandled UI exception", eventArgs.Exception);
             MessageBox.Show(
-                "FastCopy 遇到错误，详情已写入本地日志。",
-                "FastCopy",
+                "粘贴板助手遇到错误，详情已写入本地日志。",
+                "粘贴板助手",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         };
@@ -54,7 +54,7 @@ internal static class Program
 
     private static void ReportFatalStartupException(Exception exception)
     {
-        var fallbackPath = Path.Combine(Path.GetTempPath(), "FastCopy-startup-error.txt");
+        var fallbackPath = Path.Combine(Path.GetTempPath(), "ClipboardAssistant-startup-error.txt");
         try
         {
             AppLog.Error("Fatal startup exception", exception);
@@ -69,9 +69,9 @@ internal static class Program
         try
         {
             MessageBox.Show(
-                $"FastCopy 启动失败。错误信息已写入：{Environment.NewLine}{fallbackPath}"
+                $"粘贴板助手启动失败。错误信息已写入：{Environment.NewLine}{fallbackPath}"
                     + $"{Environment.NewLine}{Environment.NewLine}{exception.Message}",
-                "FastCopy",
+                "粘贴板助手",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }

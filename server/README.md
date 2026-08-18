@@ -1,4 +1,4 @@
-# FastCopy server
+# 粘贴板助手服务端
 
 The server is a Go HTTP/WebSocket service backed by PostgreSQL. It stores
 authentication state, device history, presence timestamps, idempotency keys,

@@ -31,7 +31,7 @@ internal sealed class SettingsForm : Form
     public SettingsForm(SyncEngine engine)
     {
         _engine = engine;
-        Text = "FastCopy";
+        Text = "粘贴板助手";
         Icon = SystemIcons.Application;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(520, 500);
@@ -98,7 +98,7 @@ internal sealed class SettingsForm : Form
 
         var title = new Label
         {
-            Text = "FastCopy",
+            Text = "粘贴板助手",
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18F, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 6)

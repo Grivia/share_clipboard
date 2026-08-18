@@ -19,7 +19,7 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "clipboard.fill")
                     .font(.title2)
-                Text("FastCopy")
+                Text("粘贴板助手")
                     .font(.title2.weight(.semibold))
             }
 

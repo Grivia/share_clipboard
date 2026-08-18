@@ -1,13 +1,13 @@
-# FastCopy for Windows
+# 粘贴板助手 Windows 客户端
 
-FastCopy for Windows is a small native tray client for Windows 10 and 11. It
-uses the existing FastCopy v1 API and synchronizes text clipboard contents with
+粘贴板助手 for Windows is a small native tray client for Windows 10 and 11. It
+uses the existing v1 API and synchronizes text clipboard contents with
 the macOS and Android clients.
 
 ## Behavior
 
 - The first launch opens a compact login-or-register window.
-- After login, closing the window leaves FastCopy in the notification area.
+- After login, closing the window leaves 粘贴板助手 in the notification area.
 - A system clipboard event is used for local changes; there is no clipboard
   polling loop.
 - WebSocket notifications trigger an immediate cursor sync. While connected,
@@ -29,7 +29,8 @@ with Windows DPAPI for the current Windows user. Pending uploads are stored only
 as encrypted envelopes. Plain clipboard text is never written to disk by this
 client.
 
-Local state and logs live in `%LOCALAPPDATA%\FastCopy`.
+For upgrade compatibility, local state and logs remain in the internal
+`%LOCALAPPDATA%\FastCopy` directory.
 
 ## Build
 
@@ -41,8 +42,9 @@ cd windows
 ```
 
 The script runs the protocol smoke tests and creates a self-contained,
-single-file x64 build at `dist\win-x64\FastCopy.exe`, plus a zip archive. An
-ARM64 build can be produced with:
+single-file x64 build at
+`dist\clipboard-assistant-win-x64\ClipboardAssistant.exe`, plus a zip archive.
+An ARM64 build can be produced with:
 
 ```powershell
 .\build.ps1 -Runtime win-arm64

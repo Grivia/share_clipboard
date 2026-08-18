@@ -8,7 +8,7 @@ STAGE_DIR="${BUILD_DIR}/module"
 DIST_DIR="${ROOT_DIR}/dist"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 VERSION=$(sed -n 's/^version=//p' "${ROOT_DIR}/module/module.prop" | head -n 1)
-OUTPUT_NAME="fastcopy-kernelsu-arm64-v${VERSION}.zip"
+OUTPUT_NAME="clipboard-assistant-kernelsu-arm64-v${VERSION}.zip"
 
 if [[ -z "${VERSION}" ]]; then
     echo "module.prop does not contain a version" >&2

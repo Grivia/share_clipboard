@@ -5,13 +5,13 @@ case "$DEVICE_ARCH" in
     arm64|arm64-v8a)
         ;;
     *)
-        abort "FastCopy currently supports arm64 devices only"
+        abort "粘贴板助手目前仅支持 arm64 设备"
         ;;
 esac
 
 DEVICE_API=${API:-$(getprop ro.build.version.sdk)}
 if [ -z "$DEVICE_API" ] || [ "$DEVICE_API" -lt 29 ]; then
-    abort "FastCopy requires Android 10 (API 29) or newer"
+    abort "粘贴板助手需要 Android 10（API 29）或更高版本"
 fi
 
 set_perm "$MODPATH/service.sh" 0 0 0755

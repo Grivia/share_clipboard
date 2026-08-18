@@ -23,7 +23,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _statusItem = new ToolStripMenuItem("尚未登录") { Enabled = false };
         _syncToggleItem = new ToolStripMenuItem("同步剪贴板") { CheckOnClick = true };
         _syncNowItem = new ToolStripMenuItem("立即同步");
-        var openItem = new ToolStripMenuItem("打开 FastCopy");
+        var openItem = new ToolStripMenuItem("打开粘贴板助手");
         var exitItem = new ToolStripMenuItem("退出");
 
         openItem.Click += (_, _) => _settingsForm.ShowAndActivate();
@@ -49,7 +49,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
-            Text = "FastCopy",
+            Text = "粘贴板助手",
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -109,8 +109,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _syncToggleItem.Enabled = snapshot.IsAuthenticated && !snapshot.IsBusy;
             _syncNowItem.Enabled = snapshot.IsAuthenticated && snapshot.SyncEnabled && !snapshot.IsBusy;
             var tooltip = snapshot.IsAuthenticated
-                ? $"FastCopy - {snapshot.Status}"
-                : "FastCopy - 尚未登录";
+                ? $"粘贴板助手 - {snapshot.Status}"
+                : "粘贴板助手 - 尚未登录";
             _notifyIcon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
         }
         finally
