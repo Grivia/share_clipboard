@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>FastCopy</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>FastCopy</h1>
+          <p id="version">KernelSU 0.3.3</p>
+        </div>
+        <button id="refresh" class="icon-button" type="button" title="刷新" aria-label="刷新">↻</button>
+      </header>
+
+      <section class="status-band" aria-live="polite">
+        <span id="status-dot" class="status-dot"></span>
+        <div>
+          <strong id="status-title">正在读取状态</strong>
+          <p id="status-message"></p>
+        </div>
+      </section>
+
+      <section id="devices-section" hidden>
+        <div class="section-heading">
+          <h2>在线设备</h2>
+          <span id="device-count"></span>
+        </div>
+        <div id="devices-list" class="devices-list" role="list" aria-live="polite"></div>
+      </section>
+
+      <form id="settings">
+        <section>
+          <h2>同步</h2>
+          <label class="toggle-row">
+            <span>启用后台同步</span>
+            <input id="enabled" type="checkbox" role="switch" />
+          </label>
+          <label>
+            <span>服务端</span>
+            <input id="server-url" type="url" value="https://zhy.hair/fastcopy" required />
+          </label>
+        </section>
+
+        <section id="account-section">
+          <h2>账户</h2>
+          <label>
+            <span>账号</span>
+            <input id="account" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input id="password" type="password" autocomplete="current-password" minlength="4" />
+          </label>
+        </section>
+
+        <button id="save" class="primary" type="submit">登录或注册</button>
+      </form>
+
+      <details>
+        <summary>运行日志</summary>
+        <pre id="logs">暂无日志</pre>
+      </details>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

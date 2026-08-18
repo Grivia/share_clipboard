@@ -1,0 +1,6 @@
+id=fastcopy_kernelsu
+name=FastCopy Clipboard Sync
+version=0.3.3
+versionCode=8
+author=Rivia
+description=端到端加密的跨设备文本剪贴板同步

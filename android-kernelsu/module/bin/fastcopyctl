@@ -1,0 +1,159 @@
+#!/system/bin/sh
+
+MODDIR=${0%/*}
+MODDIR=${MODDIR%/*}
+DATA_DIR=/data/adb/fastcopy
+PID_FILE="$DATA_DIR/fastcopyd.pid"
+LOG_FILE="$DATA_DIR/fastcopyd.log"
+BINARY="$MODDIR/bin/fastcopyd"
+BRIDGE_RUNTIME=/data/local/tmp/fastcopy-bridge.jar
+
+export KSU_MODULE=fastcopy_kernelsu
+export FASTCOPY_MODDIR="$MODDIR"
+export FASTCOPY_DATA_DIR="$DATA_DIR"
+
+is_running() {
+    [ -f "$PID_FILE" ] || return 1
+    PID=$(cat "$PID_FILE" 2>/dev/null)
+    [ -n "$PID" ] || return 1
+    kill -0 "$PID" 2>/dev/null || return 1
+    RUNNING_BINARY=$(readlink "/proc/$PID/exe" 2>/dev/null)
+    EXPECTED_BINARY=$(readlink -f "$BINARY" 2>/dev/null)
+    [ -n "$EXPECTED_BINARY" ] || EXPECTED_BINARY=$BINARY
+    [ "$RUNNING_BINARY" = "$EXPECTED_BINARY" ]
+}
+
+rotate_log() {
+    [ -f "$LOG_FILE" ] || return 0
+    LOG_SIZE=$(wc -c <"$LOG_FILE" 2>/dev/null)
+    case "$LOG_SIZE" in
+        ''|*[!0-9]*)
+            return 0
+            ;;
+    esac
+    if [ "$LOG_SIZE" -gt 1048576 ]; then
+        tail -c 524288 "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null || return 0
+        mv -f "$LOG_FILE.tmp" "$LOG_FILE"
+        chmod 0600 "$LOG_FILE"
+    fi
+}
+
+start() {
+    if is_running; then
+        echo "FastCopy is already running (pid $PID)"
+        return 0
+    fi
+
+    mkdir -p "$DATA_DIR"
+    chmod 0700 "$DATA_DIR"
+    rm -f "$PID_FILE"
+    if [ ! -x "$BINARY" ] || [ ! -r "$MODDIR/bin/fastcopy-bridge.jar" ]; then
+        echo "FastCopy module files are incomplete" >&2
+        return 1
+    fi
+    if ! cp -f "$MODDIR/bin/fastcopy-bridge.jar" "$BRIDGE_RUNTIME"; then
+        echo "Unable to prepare FastCopy clipboard bridge" >&2
+        return 1
+    fi
+    chown 2000:2000 "$BRIDGE_RUNTIME"
+    chmod 0644 "$BRIDGE_RUNTIME"
+    restorecon "$BRIDGE_RUNTIME" 2>/dev/null
+    export FASTCOPY_BRIDGE_JAR="$BRIDGE_RUNTIME"
+    rotate_log
+
+    BUSYBOX=/data/adb/ksu/bin/busybox
+    if [ -x "$BUSYBOX" ]; then
+        "$BUSYBOX" nohup "$BINARY" </dev/null >>"$LOG_FILE" 2>&1 &
+    else
+        nohup "$BINARY" </dev/null >>"$LOG_FILE" 2>&1 &
+    fi
+    PID=$!
+    echo "$PID" >"$PID_FILE"
+    chmod 0600 "$PID_FILE" "$LOG_FILE" 2>/dev/null
+    sleep 1
+    if ! is_running; then
+        rm -f "$PID_FILE"
+        echo "FastCopy failed to start; check $LOG_FILE" >&2
+        return 1
+    fi
+    echo "FastCopy started (pid $PID)"
+}
+
+stop() {
+    if ! is_running; then
+        rm -f "$PID_FILE"
+        echo "FastCopy is not running"
+        return 0
+    fi
+
+    kill "$PID" 2>/dev/null
+    COUNT=0
+    while kill -0 "$PID" 2>/dev/null && [ "$COUNT" -lt 30 ]; do
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+    if kill -0 "$PID" 2>/dev/null; then
+        kill -9 "$PID" 2>/dev/null
+    fi
+    rm -f "$PID_FILE"
+    echo "FastCopy stopped"
+}
+
+status() {
+    if is_running; then
+        echo "running (pid $PID)"
+    else
+        echo "stopped"
+    fi
+    if [ -f "$DATA_DIR/status.json" ]; then
+        cat "$DATA_DIR/status.json"
+    fi
+}
+
+refresh_devices() {
+    if ! is_running; then
+        echo "FastCopy is not running" >&2
+        return 1
+    fi
+    if ! kill -10 "$PID" 2>/dev/null; then
+        echo "Unable to request a device refresh" >&2
+        return 1
+    fi
+    echo "Device refresh requested"
+}
+
+case "${1:-status}" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    status)
+        status
+        ;;
+    logs)
+        tail -n "${2:-80}" "$LOG_FILE" 2>/dev/null
+        ;;
+    refresh-devices)
+        refresh_devices
+        ;;
+    config-get)
+        "$BINARY" config-get
+        ;;
+    config-set)
+        if [ "$#" -ne 2 ]; then
+            echo "usage: fastcopyctl config-set <base64-json>" >&2
+            exit 2
+        fi
+        "$BINARY" config-set "$2"
+        ;;
+    *)
+        echo "usage: fastcopyctl {start|stop|restart|status|logs|refresh-devices|config-get|config-set}" >&2
+        exit 2
+        ;;
+esac
