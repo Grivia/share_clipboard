@@ -1,5 +1,7 @@
 # FastCopy
 
+快速多端共享粘贴板。
+
 FastCopy is an end-to-end encrypted clipboard synchronizer. This repository
 contains the cross-platform service and clients:
 
