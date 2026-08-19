@@ -26,6 +26,11 @@ with that account log in automatically.
 The APNs token API and `device_push_tokens` migration are deployed. APNs
 sending currently remains disabled until an Apple token-signing key is added.
 
+Migration `004_device_roles.sql` adds the unique per-account super-admin role.
+For an existing account it selects the oldest non-revoked device, falling back
+to the oldest historical device. Verify that device after the first upgraded
+startup before assigning additional administrators.
+
 ## Enable APNs
 
 1. Put the Apple `.p8` key outside the Git repository, for example at

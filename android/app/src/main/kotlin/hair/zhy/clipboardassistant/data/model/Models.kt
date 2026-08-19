@@ -39,6 +39,7 @@ data class DeviceModel(
     val platform: String,
     @SerialName("os_version") val osVersion: String = "",
     @SerialName("app_version") val appVersion: String = "",
+    val role: String = "member",
     @SerialName("first_login_at") val firstLoginAt: String,
     @SerialName("last_login_at") val lastLoginAt: String,
     @SerialName("last_seen_at") val lastSeenAt: String? = null,
@@ -46,7 +47,12 @@ data class DeviceModel(
     @SerialName("logged_in") val loggedIn: Boolean = false,
     val online: Boolean = false,
     val current: Boolean = false,
+    @SerialName("can_revoke") val canRevoke: Boolean = false,
+    @SerialName("can_change_role") val canChangeRole: Boolean = false,
 )
+
+@Serializable
+data class UpdateDeviceRoleRequest(val role: String)
 
 @Serializable
 data class AuthResponse(

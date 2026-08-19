@@ -133,6 +133,24 @@ logout() {
     echo "FastCopy signed out"
 }
 
+run_device_action() {
+    WAS_RUNNING=0
+    if is_running; then
+        WAS_RUNNING=1
+        stop || return 1
+    fi
+    "$BINARY" "$@"
+    ACTION_STATUS=$?
+    START_STATUS=0
+    if [ "$WAS_RUNNING" -eq 1 ]; then
+        start || START_STATUS=$?
+    fi
+    if [ "$ACTION_STATUS" -ne 0 ]; then
+        return "$ACTION_STATUS"
+    fi
+    return "$START_STATUS"
+}
+
 case "${1:-status}" in
     start)
         start
@@ -156,6 +174,20 @@ case "${1:-status}" in
     logout)
         logout
         ;;
+    device-revoke)
+        if [ "$#" -ne 2 ]; then
+            echo "usage: fastcopyctl device-revoke <device-id>" >&2
+            exit 2
+        fi
+        run_device_action "$@"
+        ;;
+    device-role)
+        if [ "$#" -ne 3 ]; then
+            echo "usage: fastcopyctl device-role <device-id> <admin|member>" >&2
+            exit 2
+        fi
+        run_device_action "$@"
+        ;;
     config-get)
         "$BINARY" config-get
         ;;
@@ -167,7 +199,7 @@ case "${1:-status}" in
         "$BINARY" config-set "$2"
         ;;
     *)
-        echo "usage: fastcopyctl {start|stop|restart|status|logs|refresh-devices|logout|config-get|config-set}" >&2
+        echo "usage: fastcopyctl {start|stop|restart|status|logs|refresh-devices|logout|device-revoke|device-role|config-get|config-set}" >&2
         exit 2
         ;;
 esac

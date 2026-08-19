@@ -20,4 +20,6 @@ app/build/outputs/apk/debug/app-debug.apk
 
 客户端暂时不接入 FCM 或其他 Android Push。前台使用 WebSocket，后台使用 WorkManager 游标补拉。
 
+设备页面显示超级管理员、管理员和普通设备角色。超级管理员可以授予或撤销管理员；超级管理员和管理员可以让权限范围内的其他设备下线。客户端只显示服务端通过 capability 字段授权的操作。
+
 调试 APK 使用 Android SDK 自动生成的 debug key 签名，只适合开发测试。正式发布时应在本地或 CI 中提供 release keystore，并按 Google Play 的要求生成 AAB。

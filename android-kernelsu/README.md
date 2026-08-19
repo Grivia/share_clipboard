@@ -13,16 +13,18 @@ chmod +x scripts/build-module.sh
 ./scripts/build-module.sh
 ```
 
-Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.4.zip` from KernelSU Manager, reboot,
+Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.5.zip` from KernelSU Manager, reboot,
 then open the module WebUI. Enter the same account and password used by the
 macOS client. A missing account is registered automatically.
 
 After authentication succeeds, the WebUI removes the account and password
-fields and shows the devices that the server currently reports as online. The
-device list is fetched when the WebUI opens or its refresh button is pressed;
-the background synchronization loop does not poll the device endpoint. The
-account section also provides a sign-out button that revokes the server session
-and removes local tokens, the encryption key, and pending uploads.
+fields and shows historical devices, presence, and device roles. A super-admin
+module can grant or remove admin access; super admins and admins can force
+permitted devices offline. The device list is fetched when the WebUI opens,
+after an action, or when its refresh button is pressed; the background
+synchronization loop does not poll the device endpoint. The account section
+also provides a sign-out button that revokes the server session and removes
+local tokens, the encryption key, and pending uploads.
 
 The WebUI defaults to the production API at `https://zhy.hair/fastcopy`.
 

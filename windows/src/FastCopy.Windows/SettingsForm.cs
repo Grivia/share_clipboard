@@ -22,6 +22,7 @@ internal sealed class SettingsForm : Form
     private readonly ListView _devicesList = new();
     private readonly Button _refreshDevicesButton = new();
     private readonly Button _revokeButton = new();
+    private readonly Button _roleButton = new();
     private bool _updating;
     private bool _allowClose;
     private bool _loginFieldsInitialized;
@@ -34,8 +35,8 @@ internal sealed class SettingsForm : Form
         Text = "粘贴板助手";
         Icon = SystemIcons.Application;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(520, 500);
-        ClientSize = new Size(520, 500);
+        MinimumSize = new Size(600, 500);
+        ClientSize = new Size(600, 500);
         MaximizeBox = false;
         Font = new Font("Segoe UI", 9F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -226,9 +227,10 @@ internal sealed class SettingsForm : Form
         _devicesList.HideSelection = false;
         _devicesList.Columns.Add("设备", 170);
         _devicesList.Columns.Add("平台", 80);
+        _devicesList.Columns.Add("权限", 90);
         _devicesList.Columns.Add("状态", 75);
         _devicesList.Columns.Add("最近登录", 120);
-        _devicesList.SelectedIndexChanged += (_, _) => UpdateRevokeButton();
+        _devicesList.SelectedIndexChanged += (_, _) => UpdateDeviceButtons();
 
         var deviceButtons = new FlowLayoutPanel
         {
@@ -245,8 +247,13 @@ internal sealed class SettingsForm : Form
         _revokeButton.AutoSize = true;
         _revokeButton.Enabled = false;
         _revokeButton.Click += async (_, _) => await RevokeSelectedDeviceAsync();
+        _roleButton.Text = "设为管理员";
+        _roleButton.AutoSize = true;
+        _roleButton.Enabled = false;
+        _roleButton.Click += async (_, _) => await ChangeSelectedDeviceRoleAsync();
         deviceButtons.Controls.Add(_refreshDevicesButton);
         deviceButtons.Controls.Add(_revokeButton);
+        deviceButtons.Controls.Add(_roleButton);
         devicesTab.Controls.Add(_devicesList);
         devicesTab.Controls.Add(deviceButtons);
 
@@ -269,7 +276,7 @@ internal sealed class SettingsForm : Form
     {
         if (_devicesList.SelectedItems.Count != 1
             || _devicesList.SelectedItems[0].Tag is not DeviceModel device
-            || device.Current)
+            || !device.CanRevoke)
         {
             return;
         }
@@ -283,6 +290,18 @@ internal sealed class SettingsForm : Form
         {
             await _engine.RevokeDeviceAsync(device);
         }
+    }
+
+    private async Task ChangeSelectedDeviceRoleAsync()
+    {
+        if (_devicesList.SelectedItems.Count != 1
+            || _devicesList.SelectedItems[0].Tag is not DeviceModel device
+            || !device.CanChangeRole)
+        {
+            return;
+        }
+        var role = device.Role == "admin" ? "member" : "admin";
+        await _engine.SetDeviceRoleAsync(device, role);
     }
 
     private void HandleSnapshotChanged(object? sender, ClientSnapshot snapshot)
@@ -368,6 +387,7 @@ internal sealed class SettingsForm : Form
                     ForeColor = device.Online ? Color.ForestGreen : SystemColors.ControlText
                 };
                 item.SubItems.Add(PlatformName(device.Platform));
+                item.SubItems.Add(RoleName(device.Role));
                 item.SubItems.Add(status);
                 item.SubItems.Add(FormatTime(device.LastLoginAt));
                 _devicesList.Items.Add(item);
@@ -381,16 +401,27 @@ internal sealed class SettingsForm : Form
         {
             _devicesList.EndUpdate();
         }
-        UpdateRevokeButton();
+        UpdateDeviceButtons();
     }
 
-    private void UpdateRevokeButton()
+    private void UpdateDeviceButtons()
     {
         _revokeButton.Enabled = _devicesList.SelectedItems.Count == 1
             && _devicesList.SelectedItems[0].Tag is DeviceModel device
-            && !device.Current
-            && device.RevokedAt is null;
+            && device.CanRevoke;
+        var roleDevice = _devicesList.SelectedItems.Count == 1
+            ? _devicesList.SelectedItems[0].Tag as DeviceModel
+            : null;
+        _roleButton.Enabled = roleDevice?.CanChangeRole == true;
+        _roleButton.Text = roleDevice?.Role == "admin" ? "取消管理员" : "设为管理员";
     }
+
+    private static string RoleName(string? role) => role switch
+    {
+        "super_admin" => "超级管理员",
+        "admin" => "管理员",
+        _ => "普通设备"
+    };
 
     private void HandleFormClosing(object? sender, FormClosingEventArgs eventArgs)
     {

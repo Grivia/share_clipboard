@@ -57,6 +57,15 @@ final class APIClient {
         )
     }
 
+    func updateDeviceRole(accessToken: String, deviceID: String, role: String) async throws {
+        try await callWithoutResponse(
+            "PATCH",
+            path: "/v1/devices/\(deviceID)/role",
+            accessToken: accessToken,
+            body: UpdateDeviceRoleRequest(role: role)
+        )
+    }
+
     func logout(accessToken: String) async throws {
         try await callWithoutResponse("POST", path: "/v1/auth/logout", accessToken: accessToken)
     }

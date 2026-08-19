@@ -178,10 +178,22 @@ final class AppModel: ObservableObject {
     }
 
     func revoke(_ device: DeviceModel) async {
-        guard !device.current, device.revokedAt == nil else { return }
+        guard device.canRevoke == true else { return }
         do {
             try await authorized { client, token in
                 try await client.revoke(accessToken: token, deviceID: device.id)
+            }
+            try await refreshDevices()
+        } catch {
+            fail(error)
+        }
+    }
+
+    func setRole(_ device: DeviceModel, role: String) async {
+        guard device.canChangeRole == true, ["admin", "member"].contains(role) else { return }
+        do {
+            try await authorized { client, token in
+                try await client.updateDeviceRole(accessToken: token, deviceID: device.id, role: role)
             }
             try await refreshDevices()
         } catch {

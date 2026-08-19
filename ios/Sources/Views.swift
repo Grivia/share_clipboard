@@ -168,11 +168,18 @@ private struct DevicesView: View {
             } else {
                 ForEach(model.devices) { device in
                     DeviceRow(device: device)
-                        .swipeActions {
-                            if !device.current, device.revokedAt == nil {
+                        .swipeActions(allowsFullSwipe: false) {
+                            if device.canRevoke == true {
                                 Button("撤销", role: .destructive) {
                                     Task { await model.revoke(device) }
                                 }
+                            }
+                            if device.canChangeRole == true {
+                                Button(device.role == "admin" ? "取消管理员" : "设为管理员") {
+                                    let role = device.role == "admin" ? "member" : "admin"
+                                    Task { await model.setRole(device, role: role) }
+                                }
+                                .tint(.blue)
                             }
                         }
                 }
@@ -197,6 +204,11 @@ private struct DeviceRow: View {
                 HStack(spacing: 6) {
                     Text(device.displayName)
                     if device.current { Text("本机").font(.caption).foregroundStyle(.secondary) }
+                    if device.role != nil {
+                        Text(device.roleLabel)
+                            .font(.caption)
+                            .foregroundStyle(device.role == "super_admin" ? .orange : .secondary)
+                    }
                 }
                 Text("\(device.platform) · \(device.osVersion)")
                     .font(.caption)

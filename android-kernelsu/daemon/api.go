@@ -111,6 +111,20 @@ func (c *APIClient) Devices(ctx context.Context, token string) (DevicesResponse,
 	return response, err
 }
 
+func (c *APIClient) RevokeDevice(ctx context.Context, token, deviceID string) error {
+	return c.doJSON(
+		ctx, http.MethodPost, "/v1/devices/"+url.PathEscape(deviceID)+"/revoke",
+		nil, token, nil, nil,
+	)
+}
+
+func (c *APIClient) UpdateDeviceRole(ctx context.Context, token, deviceID, role string) error {
+	return c.doJSON(
+		ctx, http.MethodPatch, "/v1/devices/"+url.PathEscape(deviceID)+"/role",
+		nil, token, map[string]string{"role": role}, nil,
+	)
+}
+
 func (c *APIClient) Acknowledge(ctx context.Context, token string, seq int64) error {
 	return c.doJSON(ctx, http.MethodPost, "/v1/sync/ack", nil, token, map[string]int64{
 		"seq": seq,

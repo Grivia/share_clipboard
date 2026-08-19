@@ -4,6 +4,8 @@ iOS 客户端采用 SwiftUI、async/await、URLSession WebSocket、Keychain 和
 UserNotifications。界面使用原生 `NavigationStack`、`List`、`Form` 与
 `TabView`，最低系统版本为 iOS 17。
 
+设备列表显示三级设备角色，并通过原生滑动操作提供服务端允许的管理员设置和设备下线功能。只有账号的超级管理员设备可以授予或撤销管理员。
+
 ## 同步行为
 
 - 应用位于前台时监听系统剪贴板，并通过 WebSocket 接收即时事件。

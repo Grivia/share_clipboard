@@ -33,6 +33,7 @@ let currentConfig = {
 let authenticated = false;
 let statusLoading = false;
 let deviceRefreshInFlight = false;
+let deviceActionInFlight = false;
 let latestStatus = null;
 
 function encodeBase64(value) {
@@ -143,12 +144,13 @@ function renderDevices(status) {
     return;
   }
 
-  const devices = Array.isArray(status.online_devices)
-    ? status.online_devices.filter((device) => device.online !== false)
-    : [];
-  elements.deviceCount.textContent = `${devices.length} 台`;
+  const devices = Array.isArray(status.devices)
+    ? status.devices
+    : Array.isArray(status.online_devices) ? status.online_devices : [];
+  const onlineCount = devices.filter((device) => device.online).length;
+  elements.deviceCount.textContent = `${devices.length} 台 · ${onlineCount} 台在线`;
   if (devices.length === 0) {
-    renderDevicesMessage("暂无在线设备");
+    renderDevicesMessage("暂无设备");
     return;
   }
 
@@ -170,17 +172,92 @@ function renderDevices(status) {
       current.textContent = "当前设备";
       title.append(current);
     }
+    const role = document.createElement("span");
+    role.className = `device-role ${device.role || "member"}`;
+    role.textContent = roleName(device.role);
+    title.append(role);
 
     const meta = document.createElement("p");
     meta.className = "device-meta";
     meta.textContent = deviceDescription(device);
     content.append(title, meta);
 
-    const online = document.createElement("span");
-    online.className = "online-label";
-    online.textContent = "在线";
-    row.append(content, online);
+    const controls = document.createElement("div");
+    controls.className = "device-controls";
+    const state = document.createElement("span");
+    state.className = `device-state ${device.online ? "online" : ""}`;
+    state.textContent = deviceState(device);
+    controls.append(state);
+    if (device.can_change_role || device.can_revoke) {
+      const actions = document.createElement("div");
+      actions.className = "device-actions";
+      if (device.can_change_role) {
+        const roleButton = document.createElement("button");
+        roleButton.className = "device-action";
+        roleButton.type = "button";
+        roleButton.textContent = device.role === "admin" ? "取消管理员" : "设为管理员";
+        roleButton.addEventListener("click", () => changeDeviceRole(device, roleButton));
+        actions.append(roleButton);
+      }
+      if (device.can_revoke) {
+        const revokeButton = document.createElement("button");
+        revokeButton.className = "device-action destructive";
+        revokeButton.type = "button";
+        revokeButton.textContent = "移除";
+        revokeButton.addEventListener("click", () => revokeDevice(device, revokeButton));
+        actions.append(revokeButton);
+      }
+      controls.append(actions);
+    }
+    row.append(content, controls);
     elements.devicesList.append(row);
+  }
+}
+
+function roleName(role) {
+  if (role === "super_admin") return "超级管理员";
+  if (role === "admin") return "管理员";
+  return "普通设备";
+}
+
+function deviceState(device) {
+  if (device.revoked_at) return "已移除";
+  if (device.online) return "在线";
+  if (device.logged_in) return "已登录";
+  return "已退出";
+}
+
+function validDeviceID(deviceID) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceID);
+}
+
+async function changeDeviceRole(device, button) {
+  if (deviceActionInFlight || !device.can_change_role || !validDeviceID(device.id)) return;
+  const role = device.role === "admin" ? "member" : "admin";
+  await runDeviceAction(`device-role ${device.id} ${role}`, button, "设备权限已更新");
+}
+
+async function revokeDevice(device, button) {
+  if (deviceActionInFlight || !device.can_revoke || !validDeviceID(device.id)) return;
+  if (!window.confirm(`确定移除“${device.display_name || "该设备"}”？`)) return;
+  await runDeviceAction(`device-revoke ${device.id}`, button, "设备已移除");
+}
+
+async function runDeviceAction(argumentsText, button, successMessage) {
+  deviceActionInFlight = true;
+  button.disabled = true;
+  try {
+    const result = await exec(`${CONTROL} ${argumentsText}`);
+    if (result.errno !== 0) {
+      toast("操作失败，请检查设备权限和网络");
+      return;
+    }
+    toast(successMessage);
+    await loadStatus();
+    await refreshDevices();
+  } finally {
+    deviceActionInFlight = false;
+    button.disabled = false;
   }
 }
 

@@ -24,6 +24,21 @@ deployment: registration is serialized with a PostgreSQL advisory lock, so
 only the first account can be created even when requests arrive concurrently.
 Concurrent first requests for the same account converge on the same account.
 
+## Device roles
+
+The first device registered for an account is its unique `super_admin`; later
+devices are `member` by default. The super admin can promote or demote other
+devices and force them offline. An `admin` can force members and peer admins
+offline, but cannot manage roles or revoke the super admin. Members have no
+remote device-management permission.
+
+`GET /v1/devices` returns `role`, `can_revoke`, and `can_change_role` for each
+target device. Role changes use `PATCH /v1/devices/<device_id>/role`. Capability
+fields are only UI guidance: role checks and row locks are applied again inside
+the database transaction. Migration `004_device_roles.sql` promotes the oldest
+non-revoked device in every existing account, falling back to its oldest
+historical device.
+
 ## iOS push notifications
 
 The iOS client uploads its APNs device token with

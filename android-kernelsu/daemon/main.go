@@ -128,9 +128,76 @@ func runUtility(stores *Stores, args []string) error {
 			return fmt.Errorf("usage: fastcopyd logout")
 		}
 		return logoutSession(stores)
+	case "device-revoke":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: fastcopyd device-revoke <device-id>")
+		}
+		return runDeviceUtility(stores, func(ctx context.Context, api *APIClient, token string) error {
+			return api.RevokeDevice(ctx, token, args[1])
+		})
+	case "device-role":
+		if len(args) != 3 || (args[2] != "admin" && args[2] != "member") {
+			return fmt.Errorf("usage: fastcopyd device-role <device-id> <admin|member>")
+		}
+		return runDeviceUtility(stores, func(ctx context.Context, api *APIClient, token string) error {
+			return api.UpdateDeviceRole(ctx, token, args[1], args[2])
+		})
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runDeviceUtility(
+	stores *Stores,
+	operation func(context.Context, *APIClient, string) error,
+) error {
+	user, err := stores.LoadUserConfig()
+	if err != nil {
+		return err
+	}
+	runtime, err := stores.LoadRuntime()
+	if err != nil {
+		return err
+	}
+	api, err := NewAPIClient(user.ServerURL)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	return utilityAuthorized(ctx, stores, api, &runtime, operation)
+}
+
+func utilityAuthorized(
+	ctx context.Context,
+	stores *Stores,
+	api *APIClient,
+	runtime *RuntimeState,
+	operation func(context.Context, *APIClient, string) error,
+) error {
+	if runtime.AccessToken != "" {
+		err := operation(ctx, api, runtime.AccessToken)
+		if err == nil || !isUnauthorized(err) {
+			return err
+		}
+	}
+	if runtime.RefreshToken == "" {
+		return &APIError{Status: 401, Code: "SESSION_EXPIRED", Message: "session expired"}
+	}
+	response, err := api.Refresh(ctx, runtime.RefreshToken)
+	if err != nil {
+		if isUnauthorized(err) {
+			runtime.ClearAuthentication()
+			_ = stores.SaveRuntime(*runtime)
+		}
+		return err
+	}
+	runtime.AccessToken = response.Tokens.AccessToken
+	runtime.RefreshToken = response.Tokens.RefreshToken
+	if err := stores.SaveRuntime(*runtime); err != nil {
+		return err
+	}
+	return operation(ctx, api, runtime.AccessToken)
 }
 
 func logoutSession(stores *Stores) error {
@@ -175,6 +242,7 @@ func clearLocalSession(stores *Stores, user UserConfig, runtime RuntimeState) er
 		State:         "unconfigured",
 		Message:       "Signed out",
 		OnlineDevices: []DeviceSummary{},
+		Devices:       []DeviceSummary{},
 		Version:       daemonVersion,
 		UpdatedAt:     time.Now().UTC(),
 	})

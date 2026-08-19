@@ -29,6 +29,7 @@ struct Device: Codable, Identifiable {
     let platform: String
     let osVersion: String
     let appVersion: String
+    let role: String?
     let firstLoginAt: String
     let lastLoginAt: String
     let lastSeenAt: String?
@@ -36,6 +37,20 @@ struct Device: Codable, Identifiable {
     let loggedIn: Bool
     let online: Bool
     let current: Bool
+    let canRevoke: Bool?
+    let canChangeRole: Bool?
+
+    var roleLabel: String {
+        switch role {
+        case "super_admin": return "超级管理员"
+        case "admin": return "管理员"
+        default: return "普通设备"
+        }
+    }
+}
+
+struct UpdateDeviceRoleRequest: Codable {
+    let role: String
 }
 
 struct SessionTokens: Codable {

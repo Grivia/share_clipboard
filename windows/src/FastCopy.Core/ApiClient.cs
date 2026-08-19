@@ -21,7 +21,7 @@ public sealed class FastCopyApiException : Exception
 
 public sealed class FastCopyApiClient
 {
-    private const string UserAgent = "FastCopyWindows/0.1.1";
+    private const string UserAgent = "FastCopyWindows/0.1.2";
     private static readonly HttpClient Http = CreateHttpClient();
     private readonly Uri _baseUri;
 
@@ -85,6 +85,18 @@ public sealed class FastCopyApiClient
             $"v1/devices/{Uri.EscapeDataString(deviceId)}/revoke",
             token,
             null,
+            cancellationToken);
+
+    public Task UpdateDeviceRoleAsync(
+        string deviceId,
+        string role,
+        string token,
+        CancellationToken cancellationToken) =>
+        SendWithoutResponseAsync(
+            HttpMethod.Patch,
+            $"v1/devices/{Uri.EscapeDataString(deviceId)}/role",
+            token,
+            new UpdateDeviceRoleRequest(role),
             cancellationToken);
 
     public async Task<ClientWebSocket> ConnectWebSocketAsync(

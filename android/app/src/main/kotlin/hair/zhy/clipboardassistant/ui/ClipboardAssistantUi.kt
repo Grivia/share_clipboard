@@ -23,12 +23,15 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -254,25 +257,57 @@ private fun DevicesScreen(devices: List<DeviceModel>, model: AppViewModel) {
 
 @Composable
 private fun DeviceRow(device: DeviceModel, model: AppViewModel) {
+    var menuExpanded by remember(device.id) { mutableStateOf(false) }
+    val role = when (device.role) {
+        "super_admin" -> "超级管理员"
+        "admin" -> "管理员"
+        else -> "普通设备"
+    }
+    val presence = when {
+        device.revokedAt != null -> "已移除"
+        device.online -> "在线"
+        device.loggedIn -> "已登录"
+        else -> "已退出"
+    }
     ListItem(
         headlineContent = {
             Text(if (device.current) "${device.displayName} · 本机" else device.displayName)
         },
         supportingContent = {
-            Text(
-                when {
-                    device.revokedAt != null -> "已移除"
-                    device.online -> "在线"
-                    device.loggedIn -> "已登录"
-                    else -> "已退出"
-                },
-            )
+            Text("$role · $presence")
         },
         leadingContent = { Icon(Icons.Default.Phone, contentDescription = null) },
         trailingContent = {
-            if (!device.current && device.revokedAt == null) {
-                IconButton(onClick = { model.revokeDevice(device) }) {
-                    Icon(Icons.Default.Delete, contentDescription = "移除此设备")
+            if (device.canRevoke || device.canChangeRole) {
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "管理设备")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        if (device.canChangeRole) {
+                            DropdownMenuItem(
+                                text = { Text(if (device.role == "admin") "取消管理员" else "设为管理员") },
+                                leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    model.setDeviceRole(device, if (device.role == "admin") "member" else "admin")
+                                },
+                            )
+                        }
+                        if (device.canRevoke) {
+                            DropdownMenuItem(
+                                text = { Text("移除此设备") },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    model.revokeDevice(device)
+                                },
+                            )
+                        }
+                    }
                 }
             }
         },

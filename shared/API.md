@@ -63,11 +63,25 @@ the password changes this key.
 
 - `GET /v1/devices`
 - `PATCH /v1/devices/<device_id>` with `{"name":"..."}`
+- `PATCH /v1/devices/<device_id>/role` with `{"role":"admin"}` or `{"role":"member"}`
 - `POST /v1/devices/<device_id>/revoke`
 
 The list includes historical devices plus current `logged_in` and `online`
-flags. Revoking a device invalidates all of its sessions and closes its active
-WebSocket connections.
+flags. Each item also contains `role`, `can_revoke`, and `can_change_role`.
+Clients use the capability fields to render actions, while the server always
+enforces the permission again when processing a request.
+
+The first device of a newly registered account is the unique `super_admin`.
+Later devices start as `member`. The super admin may promote a member to
+`admin`, demote an admin to member, and revoke any other active device. An
+admin may revoke a member or another admin, but cannot revoke the super admin
+or change roles. A member cannot manage other devices. No role can revoke its
+own current device through the device endpoint; every device can still use the
+normal logout endpoint for itself.
+
+Revoking a device invalidates all of its sessions and closes its active
+WebSocket connections. This is a forced sign-out, so the device can sign in
+again with the account password; its assigned role is retained.
 
 ## Encryption envelope
 
@@ -121,6 +135,7 @@ Connect to `GET /v1/events/ws` with the access token header. Events are JSON:
 {"type":"device.presence_changed","data":{}}
 {"type":"device.logged_in","data":{}}
 {"type":"device.revoked","data":{}}
+{"type":"device.updated","data":{}}
 ```
 
 WebSocket delivery is opportunistic. On every reconnect, clients call the

@@ -11,6 +11,7 @@ import hair.zhy.clipboardassistant.data.model.ErrorEnvelope
 import hair.zhy.clipboardassistant.data.model.RefreshRequest
 import hair.zhy.clipboardassistant.data.model.RefreshResponse
 import hair.zhy.clipboardassistant.data.model.SocketEvent
+import hair.zhy.clipboardassistant.data.model.UpdateDeviceRoleRequest
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,6 +59,15 @@ class ApiClient(
         callWithoutResponse("POST", "/v1/devices/$deviceId/revoke", accessToken)
     }
 
+    suspend fun updateDeviceRole(accessToken: String, deviceId: String, role: String) {
+        callWithoutResponse(
+            "PATCH",
+            "/v1/devices/$deviceId/role",
+            accessToken,
+            json.encodeToString(UpdateDeviceRoleRequest(role)),
+        )
+    }
+
     suspend fun logout(accessToken: String) {
         callWithoutResponse("POST", "/v1/auth/logout", accessToken)
     }
@@ -76,7 +86,7 @@ class ApiClient(
         val request = Request.Builder()
             .url("${wsBase.trimEnd('/')}/v1/events/ws")
             .header("Authorization", "Bearer $accessToken")
-            .header("User-Agent", "ClipboardAssistantAndroid/0.1.0")
+            .header("User-Agent", "ClipboardAssistantAndroid/0.1.1")
             .build()
         return http.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) = onConnected()
@@ -121,7 +131,7 @@ class ApiClient(
         val builder = Request.Builder()
             .url("${baseUrl.trimEnd('/')}$path")
             .header("Accept", "application/json")
-            .header("User-Agent", "ClipboardAssistantAndroid/0.1.0")
+            .header("User-Agent", "ClipboardAssistantAndroid/0.1.1")
         if (accessToken != null) builder.header("Authorization", "Bearer $accessToken")
         val requestBody = when {
             body != null -> body.toRequestBody(jsonType)

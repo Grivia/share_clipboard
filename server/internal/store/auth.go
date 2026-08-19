@@ -136,8 +136,8 @@ func (s *Store) Register(
 	_, err = tx.Exec(ctx, `
 		INSERT INTO devices (
 			id, user_id, installation_id, reported_name, platform, os_version,
-			app_version, first_login_at, last_login_at, last_seen_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)`,
+			app_version, role, first_login_at, last_login_at, last_seen_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, 'super_admin', $8, $8, $8)`,
 		deviceID, userID, device.InstallationID, device.ReportedName, device.Platform,
 		device.OSVersion, device.AppVersion, now)
 	if err != nil {
@@ -162,7 +162,8 @@ func (s *Store) Register(
 			ID: deviceID, UserID: userID, InstallationID: device.InstallationID,
 			ReportedName: device.ReportedName, DisplayName: device.ReportedName,
 			Platform: device.Platform, OSVersion: device.OSVersion,
-			AppVersion: device.AppVersion, FirstLoginAt: now, LastLoginAt: now,
+			AppVersion: device.AppVersion, Role: model.DeviceRoleSuperAdmin,
+			FirstLoginAt: now, LastLoginAt: now,
 			LastSeenAt: &now, LoggedIn: true, Online: false, Current: true,
 		},
 		Tokens: tokens.Public(),
@@ -229,13 +230,13 @@ func (s *Store) Login(
 				last_seen_at = EXCLUDED.last_seen_at,
 				revoked_at = NULL
 			RETURNING id, user_id, installation_id, reported_name, custom_name,
-				platform, os_version, app_version, first_login_at, last_login_at,
+				platform, os_version, app_version, role, first_login_at, last_login_at,
 				last_seen_at, revoked_at
 		)
 		SELECT u.id::text, u.user_id::text, u.installation_id::text,
 			u.reported_name, u.custom_name,
 			COALESCE(NULLIF(u.custom_name, ''), u.reported_name),
-			u.platform, u.os_version, u.app_version, u.first_login_at,
+			u.platform, u.os_version, u.app_version, u.role, u.first_login_at,
 			u.last_login_at, u.last_seen_at, u.revoked_at,
 			NOT EXISTS (SELECT 1 FROM existing)
 		FROM upserted u`,
@@ -244,7 +245,7 @@ func (s *Store) Login(
 	).Scan(
 		&result.ID, &result.UserID, &result.InstallationID, &result.ReportedName,
 		&result.CustomName, &result.DisplayName, &result.Platform, &result.OSVersion,
-		&result.AppVersion, &result.FirstLoginAt, &result.LastLoginAt,
+		&result.AppVersion, &result.Role, &result.FirstLoginAt, &result.LastLoginAt,
 		&result.LastSeenAt, &result.RevokedAt, &isNew,
 	)
 	if err != nil {
@@ -286,7 +287,7 @@ func (s *Store) RecordFailedLogin(ctx context.Context, account, remoteIP string)
 func (s *Store) Authenticate(ctx context.Context, accessToken string) (model.Principal, error) {
 	var principal model.Principal
 	err := s.pool.QueryRow(ctx, `
-		SELECT s.user_id::text, s.device_id::text, s.id::text, s.access_expires_at
+		SELECT s.user_id::text, s.device_id::text, s.id::text, d.role, s.access_expires_at
 		FROM auth_sessions s
 		JOIN users u ON u.id = s.user_id
 		JOIN devices d ON d.id = s.device_id
@@ -295,7 +296,7 @@ func (s *Store) Authenticate(ctx context.Context, accessToken string) (model.Pri
 		  AND s.access_expires_at > now()
 		  AND u.status = 'active'
 		  AND d.revoked_at IS NULL`, ids.DigestString(accessToken),
-	).Scan(&principal.UserID, &principal.DeviceID, &principal.SessionID, &principal.ExpiresAt)
+	).Scan(&principal.UserID, &principal.DeviceID, &principal.SessionID, &principal.Role, &principal.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Principal{}, ErrSessionExpired
 	}

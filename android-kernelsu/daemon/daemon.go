@@ -222,6 +222,7 @@ func (d *Daemon) networkError(err error) {
 		if state == "auth_required" {
 			status.Authenticated = false
 			status.OnlineDevices = nil
+			status.Devices = nil
 			status.DevicesLoaded = false
 			status.DevicesRefreshing = false
 			status.DevicesError = ""
@@ -296,6 +297,7 @@ func (d *Daemon) authenticate(ctx context.Context) error {
 		status.Authenticated = true
 		status.DeviceID = d.runtime.DeviceID
 		status.OnlineDevices = nil
+		status.Devices = nil
 		status.DevicesLoaded = false
 		status.DevicesRefreshing = false
 		status.DevicesError = ""
@@ -344,6 +346,7 @@ func (d *Daemon) refreshOnlineDevices(ctx context.Context) error {
 	updatedAt := time.Now().UTC()
 	d.reporter.Update(func(status *DaemonStatus) {
 		status.Authenticated = true
+		status.Devices = response.Devices
 		status.OnlineDevices = online
 		status.DevicesLoaded = true
 		status.DevicesRefreshing = false

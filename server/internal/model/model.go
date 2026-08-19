@@ -2,6 +2,29 @@ package model
 
 import "time"
 
+type DeviceRole string
+
+const (
+	DeviceRoleSuperAdmin DeviceRole = "super_admin"
+	DeviceRoleAdmin      DeviceRole = "admin"
+	DeviceRoleMember     DeviceRole = "member"
+)
+
+func ValidAssignableDeviceRole(role DeviceRole) bool {
+	return role == DeviceRoleAdmin || role == DeviceRoleMember
+}
+
+func CanRevokeDevice(actorRole, targetRole DeviceRole, sameDevice bool) bool {
+	if sameDevice || targetRole == DeviceRoleSuperAdmin {
+		return false
+	}
+	return actorRole == DeviceRoleSuperAdmin || actorRole == DeviceRoleAdmin
+}
+
+func CanChangeDeviceRole(actorRole, targetRole DeviceRole, sameDevice bool) bool {
+	return !sameDevice && actorRole == DeviceRoleSuperAdmin && targetRole != DeviceRoleSuperAdmin
+}
+
 type DeviceInput struct {
 	InstallationID string `json:"installation_id"`
 	ReportedName   string `json:"reported_name"`
@@ -26,6 +49,7 @@ type Device struct {
 	Platform       string     `json:"platform"`
 	OSVersion      string     `json:"os_version"`
 	AppVersion     string     `json:"app_version"`
+	Role           DeviceRole `json:"role"`
 	FirstLoginAt   time.Time  `json:"first_login_at"`
 	LastLoginAt    time.Time  `json:"last_login_at"`
 	LastSeenAt     *time.Time `json:"last_seen_at,omitempty"`
@@ -33,12 +57,15 @@ type Device struct {
 	LoggedIn       bool       `json:"logged_in"`
 	Online         bool       `json:"online"`
 	Current        bool       `json:"current"`
+	CanRevoke      bool       `json:"can_revoke"`
+	CanChangeRole  bool       `json:"can_change_role"`
 }
 
 type Principal struct {
 	UserID    string
 	DeviceID  string
 	SessionID string
+	Role      DeviceRole
 	ExpiresAt time.Time
 }
 

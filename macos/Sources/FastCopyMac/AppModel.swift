@@ -193,10 +193,23 @@ final class AppModel: ObservableObject {
     }
 
     func revoke(_ device: Device) async {
-        guard !device.current else { return }
+        guard device.canRevoke == true else { return }
         do {
             try await authorized { client, token in
                 try await client.revokeDevice(id: device.id, token: token)
+            }
+            await refreshDevices()
+        } catch {
+            guard isAuthenticated else { return }
+            errorText = userMessage(error)
+        }
+    }
+
+    func setRole(_ device: Device, role: String) async {
+        guard device.canChangeRole == true else { return }
+        do {
+            try await authorized { client, token in
+                try await client.updateDeviceRole(id: device.id, role: role, token: token)
             }
             await refreshDevices()
         } catch {
@@ -643,7 +656,7 @@ final class AppModel: ObservableObject {
             reportedName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             platform: "macos",
             osVersion: "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.2"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.3"
         )
     }
 

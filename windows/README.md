@@ -16,6 +16,8 @@ the macOS and Android clients.
 - The device list is refreshed when the settings window is opened, when the
   user clicks Refresh, or when a presence event arrives while the window is
   visible.
+- The device tab shows super-admin, admin, and member roles and exposes only
+  the management actions permitted by the server.
 - Only text is synchronized. Files and images are ignored.
 
 The default server is `https://zhy.hair/fastcopy`. Accounts do not need to be

@@ -8,7 +8,7 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Project = Join-Path $Root "src/FastCopy.Windows/FastCopy.Windows.csproj"
 $Tests = Join-Path $Root "tests/FastCopy.Core.SmokeTests/FastCopy.Core.SmokeTests.csproj"
 $PublishDirectory = Join-Path $Root "dist/clipboard-assistant-$Runtime"
-$Archive = Join-Path $Root "dist/ClipboardAssistant-windows-$Runtime-v0.1.1.zip"
+$Archive = Join-Path $Root "dist/ClipboardAssistant-windows-$Runtime-v0.1.2.zip"
 
 dotnet run --project $Tests --configuration Release
 

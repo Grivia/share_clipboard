@@ -125,6 +125,11 @@ struct SettingsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            if device.role != nil {
+                                Text(device.roleLabel)
+                                    .font(.caption)
+                                    .foregroundStyle(device.role == "super_admin" ? .orange : .secondary)
+                            }
                         }
                         Text(device.loggedIn ? (device.online ? "在线" : "已登录") : "已退出")
                             .font(.caption)
@@ -133,14 +138,32 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    if !device.current && device.revokedAt == nil {
-                        Button(role: .destructive) {
-                            Task { await model.revoke(device) }
+                    if device.canRevoke == true || device.canChangeRole == true {
+                        Menu {
+                            if device.canChangeRole == true {
+                                Button {
+                                    let role = device.role == "admin" ? "member" : "admin"
+                                    Task { await model.setRole(device, role: role) }
+                                } label: {
+                                    Label(
+                                        device.role == "admin" ? "取消管理员" : "设为管理员",
+                                        systemImage: device.role == "admin" ? "person.badge.minus" : "person.badge.plus"
+                                    )
+                                }
+                            }
+                            if device.canRevoke == true {
+                                Button(role: .destructive) {
+                                    Task { await model.revoke(device) }
+                                } label: {
+                                    Label("移除此设备", systemImage: "xmark.circle")
+                                }
+                            }
                         } label: {
-                            Image(systemName: "xmark.circle")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .buttonStyle(.borderless)
-                        .help("移除此设备")
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("管理设备")
                     }
                 }
                 .padding(.vertical, 4)

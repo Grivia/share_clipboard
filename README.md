@@ -11,10 +11,10 @@
 | 组件 | 状态 | 运行环境 | 当前版本 |
 | --- | --- | --- | --- |
 | 服务端 | 可用 | Linux / Docker，Go 1.25，PostgreSQL 17 | 协议 v1 |
-| macOS | 可用 | macOS 13 及以上 | 0.2.2 |
-| Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.1 |
-| Android | 可用 | Android 10 及以上 | 0.1.0 |
-| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.4 |
+| macOS | 可用 | macOS 13 及以上 | 0.2.3 |
+| Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.2 |
+| Android | 可用 | Android 10 及以上 | 0.1.1 |
+| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.5 |
 | iOS | 可用 | iOS 17 及以上，APNs | 0.1.0 |
 | Linux 桌面端 | 尚未实现 | 服务端协议已预留 `linux` 平台类型 | - |
 
@@ -28,7 +28,7 @@ Android KernelSU 模块目前已在 MIUI Android 13、KernelSU 0.9.5 上进行�
 - WebSocket 实时通知与 REST 游标补偿结合，断线重连后不会只依赖瞬时消息。
 - 上传前持久化密文队列，网络恢复后自动重试。
 - 使用设备 ID 与客户端事件 ID 实现 POST 幂等，超时重试不会重复创建事件。
-- 维护历史设备、登录状态和在线状态，可移除其他设备并立即撤销其会话。
+- 维护历史设备、登录状态和在线状态，并以超级管理员、管理员和普通设备三级权限控制设备下线。
 - 过滤刚刚同步回本机的内容，避免多台设备之间形成复制回环。
 - 当前只同步纯文本，不同步图片、文件、富文本和剪贴板历史。
 
@@ -94,6 +94,20 @@ fastcopy:v1|<client_event_id>|text/plain
 服务端仍然能够看到必要的元数据，例如账号、设备名称、平台、在线状态、事件时间、密文长度和来源设备，但看不到剪贴板明文。
 
 当前协议没有密码修改和密钥轮换流程。密码参与剪贴板密钥派生，直接改变密码会让新密钥无法解密旧事件，因此在实现正式轮换协议前不要手工修改数据库中的密码哈希。
+
+### 设备权限
+
+每个账号只有一台超级管理员设备。新账号第一次登录的设备自动成为超级管理员，之后登录的新设备默认为普通设备：
+
+| 角色 | 下线其他设备 | 设置管理员 | 限制 |
+| --- | --- | --- | --- |
+| 超级管理员 | 可以 | 可以授予或撤销管理员 | 不能下线自己，不能把超级管理员身份转给其他设备 |
+| 管理员 | 可以 | 不可以 | 不能下线超级管理员，不能修改任何设备的角色 |
+| 普通设备 | 不可以 | 不可以 | 只能查看设备列表和退出本机账号 |
+
+管理员可以下线普通设备或其他管理员。所有客户端都使用服务端在 `GET /v1/devices` 中返回的 `can_revoke` 和 `can_change_role` 决定是否显示操作入口；真正的权限仍由服务端在事务中校验，不能通过伪造请求绕过。
+
+从旧版本升级时，数据库迁移会把账号最早登录且尚未撤销的设备设为超级管理员；如果已经没有未撤销设备，则回退到最早的历史设备。超级管理员角色具有数据库唯一约束，不会出现同一账号拥有两台超级管理员设备的情况。
 
 ## 仓库结构
 
@@ -185,7 +199,7 @@ open 'dist/粘贴板助手.app'
 
 ```text
 macos/dist/粘贴板助手.app
-macos/dist/粘贴板助手-macos-v0.2.2.zip
+macos/dist/粘贴板助手-macos-v0.2.3.zip
 ```
 
 应用以 `LSUIElement` 方式运行，只显示在 macOS 菜单栏，不占用 Dock。菜单可以暂停同步、立即同步、打开设备与设置窗口或退出应用。
@@ -217,7 +231,7 @@ x64 产物：
 
 ```text
 windows\dist\clipboard-assistant-win-x64\ClipboardAssistant.exe
-windows\dist\ClipboardAssistant-windows-win-x64-v0.1.1.zip
+windows\dist\ClipboardAssistant-windows-win-x64-v0.1.2.zip
 ```
 
 程序是包含 .NET 运行时的 self-contained 单文件应用，目标电脑无需另外安装 .NET，因此文件体积会明显大于普通框架依赖应用。启动后程序驻留在任务栏通知区域，首次运行会自动打开登录窗口。
@@ -270,10 +284,10 @@ chmod +x scripts/build-module.sh
 产物：
 
 ```text
-android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.4.zip
+android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.5.zip
 ```
 
-在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示当前在线设备和退出登录按钮；设备列表只在打开页面或手动刷新时请求，不在后台持续轮询。退出登录会撤销服务端会话，并清除模块本地的令牌、加密密钥和待上传内容。
+在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示历史设备、在线状态、当前设备允许执行的管理操作和退出登录按钮；设备列表只在打开页面、设备操作后或手动刷新时请求，不在后台持续轮询。退出登录会撤销服务端会话，并清除模块本地的令牌、加密密钥和待上传内容。
 
 模块由两个进程职责组成：
 
@@ -300,6 +314,8 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logout
 3. 如果账号不存在，服务端自动创建账号；如果账号存在，则验证密码并登录。
 4. 在其他设备输入完全相同的服务端、账号和密码。
 5. 复制一段文本，其他在线设备通常会在 WebSocket 通知到达后立即更新剪贴板。
+
+第一台设备是账号唯一的超级管理员，可在设备列表中授予其他设备管理员权限。管理员可以让其他普通设备或管理员下线，但不能指定管理员，也不能操作超级管理员。
 
 账号会去除首尾空白，但区分大小写。密码允许 4 至 256 个 Unicode 字符。客户端界面不会要求用户单独管理“共享密钥”，密钥在每台设备登录后自动派生并安全保存。
 
@@ -343,7 +359,7 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logout
 服务端使用以下核心表维护约束：
 
 - `users`：账号和 Argon2id 密码哈希。
-- `devices`：安装 ID、设备名称、平台、历史登录和撤销状态。
+- `devices`：安装 ID、设备名称、平台、设备角色、历史登录和撤销状态。
 - `auth_sessions`：访问令牌、刷新令牌和设备会话。
 - `clipboard_events`：加密信封、全局序号、来源设备和过期时间。
 - `clip_idempotency`：上传请求摘要与幂等结果。
@@ -369,6 +385,7 @@ Authorization: Bearer <access_token>
 | `POST` | `/v1/auth/logout` | 注销当前会话 |
 | `GET` | `/v1/devices` | 获取历史设备、登录和在线状态 |
 | `PATCH` | `/v1/devices/{device_id}` | 修改设备显示名称 |
+| `PATCH` | `/v1/devices/{device_id}/role` | 超级管理员授予或撤销管理员角色 |
 | `POST` | `/v1/devices/{device_id}/revoke` | 移除设备并撤销其全部会话 |
 | `PUT` | `/v1/push-tokens/apns` | iOS 注册或更新当前设备的 APNs token |
 | `DELETE` | `/v1/push-tokens/apns` | 删除当前设备的 APNs token |

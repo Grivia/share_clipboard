@@ -49,6 +49,7 @@ struct DeviceModel: Codable, Identifiable, Hashable {
     let platform: String
     let osVersion: String
     let appVersion: String
+    let role: String?
     let firstLoginAt: String
     let lastLoginAt: String
     let lastSeenAt: String?
@@ -56,6 +57,16 @@ struct DeviceModel: Codable, Identifiable, Hashable {
     let loggedIn: Bool
     let online: Bool
     let current: Bool
+    let canRevoke: Bool?
+    let canChangeRole: Bool?
+
+    var roleLabel: String {
+        switch role {
+        case "super_admin": return "超级管理员"
+        case "admin": return "管理员"
+        default: return "普通设备"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -65,6 +76,7 @@ struct DeviceModel: Codable, Identifiable, Hashable {
         case platform
         case osVersion = "os_version"
         case appVersion = "app_version"
+        case role
         case firstLoginAt = "first_login_at"
         case lastLoginAt = "last_login_at"
         case lastSeenAt = "last_seen_at"
@@ -72,7 +84,13 @@ struct DeviceModel: Codable, Identifiable, Hashable {
         case loggedIn = "logged_in"
         case online
         case current
+        case canRevoke = "can_revoke"
+        case canChangeRole = "can_change_role"
     }
+}
+
+struct UpdateDeviceRoleRequest: Codable {
+    let role: String
 }
 
 struct AuthResponse: Codable {

@@ -27,7 +27,7 @@ enum APIClientError: LocalizedError {
 struct APIClient {
     let baseURL: String
     private let session: URLSession
-    private static let userAgent = "FastCopyMac/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.2")"
+    private static let userAgent = "FastCopyMac/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.3")"
 
     init(baseURL: String, session: URLSession = .shared) {
         self.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -99,6 +99,15 @@ struct APIClient {
         try await sendWithoutResponse(
             method: "POST",
             path: "/v1/devices/\(id)/revoke",
+            token: token
+        )
+    }
+
+    func updateDeviceRole(id: String, role: String, token: String) async throws {
+        try await sendWithoutResponse(
+            method: "PATCH",
+            path: "/v1/devices/\(id)/role",
+            body: encode(UpdateDeviceRoleRequest(role: role)),
             token: token
         )
     }

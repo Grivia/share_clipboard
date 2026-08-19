@@ -21,7 +21,7 @@ internal sealed record ClientSnapshot(
 internal sealed class SyncEngine : IAsyncDisposable
 {
     private const int MaxPlaintextBytes = 256 * 1024 - 16;
-    private const string AppVersion = "0.1.1";
+    private const string AppVersion = "0.1.2";
     private readonly object _gate = new();
     private readonly object _persistenceGate = new();
     private readonly LocalStore _store;
@@ -295,7 +295,7 @@ internal sealed class SyncEngine : IAsyncDisposable
 
     public async Task RevokeDeviceAsync(DeviceModel device)
     {
-        if (device.Current || device.RevokedAt is not null)
+        if (!device.CanRevoke)
         {
             return;
         }
@@ -304,6 +304,28 @@ internal sealed class SyncEngine : IAsyncDisposable
             await AuthorizedAsync<object?>(async (client, token, cancellationToken) =>
             {
                 await client.RevokeDeviceAsync(device.Id, token, cancellationToken)
+                    .ConfigureAwait(false);
+                return null;
+            }, CancellationToken.None).ConfigureAwait(false);
+            await RefreshDevicesAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            SetError(exception);
+        }
+    }
+
+    public async Task SetDeviceRoleAsync(DeviceModel device, string role)
+    {
+        if (!device.CanChangeRole || (role != "admin" && role != "member"))
+        {
+            return;
+        }
+        try
+        {
+            await AuthorizedAsync<object?>(async (client, token, cancellationToken) =>
+            {
+                await client.UpdateDeviceRoleAsync(device.Id, role, token, cancellationToken)
                     .ConfigureAwait(false);
                 return null;
             }, CancellationToken.None).ConfigureAwait(false);

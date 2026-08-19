@@ -23,7 +23,8 @@ type authResult struct {
 		Account string `json:"account"`
 	} `json:"user"`
 	Device struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Role string `json:"role"`
 	} `json:"device"`
 	Tokens struct {
 		AccessToken  string `json:"access_token"`
@@ -39,6 +40,14 @@ type clipResult struct {
 	Status string `json:"status"`
 }
 
+type deviceResult struct {
+	ID            string `json:"id"`
+	Role          string `json:"role"`
+	Current       bool   `json:"current"`
+	CanRevoke     bool   `json:"can_revoke"`
+	CanChangeRole bool   `json:"can_change_role"`
+}
+
 func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 	baseURL := strings.TrimRight(os.Getenv("FASTCOPY_INTEGRATION_URL"), "/")
 	if baseURL == "" {
@@ -50,6 +59,9 @@ func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 	installationA := newUUID(t)
 
 	deviceA := authenticate(t, client, baseURL, "  "+account+"  ", password, installationA, "Integration A", http.StatusCreated)
+	if deviceA.Device.Role != "super_admin" {
+		t.Fatalf("first device role = %q, want super_admin", deviceA.Device.Role)
+	}
 	if deviceA.User.Account != account {
 		t.Fatalf("server returned account %q, want %q", deviceA.User.Account, account)
 	}
@@ -91,6 +103,9 @@ func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 	if deviceB.Device.ID == deviceA.Device.ID {
 		t.Fatal("a new installation reused the old device ID")
 	}
+	if deviceB.Device.Role != "member" {
+		t.Fatalf("second device role = %q, want member", deviceB.Device.Role)
+	}
 
 	websocketURL := strings.Replace(baseURL, "http://", "ws://", 1)
 	websocketURL = strings.Replace(websocketURL, "https://", "wss://", 1) + "/v1/events/ws"
@@ -128,6 +143,55 @@ func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 	if newScope.Event.EventID == first.Event.EventID {
 		t.Fatal("new installation incorrectly shared the old device idempotency scope")
 	}
+
+	rolePathB := baseURL + "/v1/devices/" + deviceB.Device.ID + "/role"
+	rolePathC := baseURL + "/v1/devices/" + deviceC.Device.ID + "/role"
+	requestJSON(t, client, http.MethodPatch, rolePathC, deviceB.Tokens.AccessToken,
+		map[string]string{"role": "admin"}, http.StatusForbidden, nil)
+	requestJSON(t, client, http.MethodPatch, rolePathB, reloginA.Tokens.AccessToken,
+		map[string]string{"role": "admin"}, http.StatusNoContent, nil)
+	requestJSON(t, client, http.MethodPatch, rolePathC, reloginA.Tokens.AccessToken,
+		map[string]string{"role": "super_admin"}, http.StatusBadRequest, nil)
+
+	var listed struct {
+		Devices []deviceResult `json:"devices"`
+	}
+	requestJSON(t, client, http.MethodGet, baseURL+"/v1/devices", deviceB.Tokens.AccessToken,
+		nil, http.StatusOK, &listed)
+	admin := findDevice(t, listed.Devices, deviceB.Device.ID)
+	target := findDevice(t, listed.Devices, deviceC.Device.ID)
+	if admin.Role != "admin" || !admin.Current {
+		t.Fatalf("promoted device = %+v, want current admin", admin)
+	}
+	if !target.CanRevoke || target.CanChangeRole {
+		t.Fatalf("admin target permissions = %+v, want revoke only", target)
+	}
+
+	requestJSON(t, client, http.MethodPatch, rolePathC, deviceB.Tokens.AccessToken,
+		map[string]string{"role": "admin"}, http.StatusForbidden, nil)
+	requestJSON(t, client, http.MethodPost, baseURL+"/v1/devices/"+deviceA.Device.ID+"/revoke",
+		deviceB.Tokens.AccessToken, nil, http.StatusForbidden, nil)
+	requestJSON(t, client, http.MethodPost, baseURL+"/v1/devices/"+deviceC.Device.ID+"/revoke",
+		deviceB.Tokens.AccessToken, nil, http.StatusNoContent, nil)
+	requestJSON(t, client, http.MethodGet, baseURL+"/v1/devices", deviceC.Tokens.AccessToken,
+		nil, http.StatusUnauthorized, nil)
+
+	requestJSON(t, client, http.MethodPatch, rolePathB, reloginA.Tokens.AccessToken,
+		map[string]string{"role": "member"}, http.StatusNoContent, nil)
+	deviceD := authenticate(t, client, baseURL, account, password, newUUID(t), "Integration D", http.StatusOK)
+	requestJSON(t, client, http.MethodPost, baseURL+"/v1/devices/"+deviceD.Device.ID+"/revoke",
+		deviceB.Tokens.AccessToken, nil, http.StatusForbidden, nil)
+}
+
+func findDevice(t *testing.T, devices []deviceResult, id string) deviceResult {
+	t.Helper()
+	for _, device := range devices {
+		if device.ID == id {
+			return device
+		}
+	}
+	t.Fatalf("device %s was not returned", id)
+	return deviceResult{}
 }
 
 func authenticate(

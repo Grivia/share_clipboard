@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,7 +37,7 @@ func TestAPIClientDevices(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": {"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(`{"devices":[{"id":"device-1","display_name":"Pixel","platform":"android","os_version":"16","app_version":"0.3.3","online":true,"current":true}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"devices":[{"id":"device-1","display_name":"Pixel","platform":"android","os_version":"16","app_version":"0.3.5","role":"super_admin","logged_in":true,"online":true,"current":true,"can_revoke":false,"can_change_role":false}]}`)),
 				Request:    request,
 			}, nil
 		})},
@@ -49,8 +51,124 @@ func TestAPIClientDevices(t *testing.T) {
 		t.Fatalf("device count = %d, want 1", len(result.Devices))
 	}
 	device := result.Devices[0]
-	if device.DisplayName != "Pixel" || !device.Online || !device.Current {
+	if device.DisplayName != "Pixel" || device.Role != "super_admin" || !device.LoggedIn || !device.Online || !device.Current {
 		t.Fatalf("unexpected device: %+v", device)
+	}
+}
+
+func TestAPIClientDeviceManagement(t *testing.T) {
+	baseURL, err := url.Parse("https://fastcopy.test/base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestCount := 0
+	client := &APIClient{
+		baseURL: baseURL,
+		http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestCount++
+			if authorization := request.Header.Get("Authorization"); authorization != "Bearer access-token" {
+				t.Errorf("Authorization = %q", authorization)
+			}
+			switch requestCount {
+			case 1:
+				if request.Method != http.MethodPost || request.URL.Path != "/base/v1/devices/device-2/revoke" {
+					t.Errorf("request = %s %s, want POST revoke", request.Method, request.URL.Path)
+				}
+			case 2:
+				if request.Method != http.MethodPatch || request.URL.Path != "/base/v1/devices/device-2/role" {
+					t.Errorf("request = %s %s, want PATCH role", request.Method, request.URL.Path)
+				}
+				var body map[string]string
+				if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if body["role"] != "admin" {
+					t.Errorf("role = %q, want admin", body["role"])
+				}
+			default:
+				t.Errorf("unexpected request %d", requestCount)
+			}
+			return &http.Response{
+				StatusCode: http.StatusNoContent,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    request,
+			}, nil
+		})},
+	}
+
+	if err := client.RevokeDevice(context.Background(), "access-token", "device-2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UpdateDeviceRole(context.Background(), "access-token", "device-2", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+}
+
+func TestDeviceManagementRefreshesExpiredAccessToken(t *testing.T) {
+	baseURL, err := url.Parse("https://fastcopy.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	stores := &Stores{RuntimePath: filepath.Join(directory, "runtime.json")}
+	runtime := RuntimeState{
+		InstallationID: "installation-1",
+		AccessToken:    "expired-access",
+		RefreshToken:   "valid-refresh",
+	}
+	requestCount := 0
+	client := &APIClient{
+		baseURL: baseURL,
+		http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestCount++
+			status := http.StatusNoContent
+			body := ""
+			switch requestCount {
+			case 1:
+				if request.URL.Path != "/v1/devices/device-2/role" || request.Header.Get("Authorization") != "Bearer expired-access" {
+					t.Errorf("unexpected first request: %s %s", request.Method, request.URL.Path)
+				}
+				status = http.StatusUnauthorized
+				body = `{"error":{"code":"SESSION_EXPIRED","message":"expired"}}`
+			case 2:
+				if request.URL.Path != "/v1/auth/refresh" {
+					t.Errorf("second path = %s, want /v1/auth/refresh", request.URL.Path)
+				}
+				status = http.StatusOK
+				body = `{"tokens":{"access_token":"renewed-access","refresh_token":"renewed-refresh"}}`
+			case 3:
+				if request.URL.Path != "/v1/devices/device-2/role" || request.Header.Get("Authorization") != "Bearer renewed-access" {
+					t.Errorf("unexpected final request: %s %s", request.Method, request.URL.Path)
+				}
+			default:
+				t.Errorf("unexpected request %d", requestCount)
+			}
+			return &http.Response{
+				StatusCode: status,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    request,
+			}, nil
+		})},
+	}
+
+	err = utilityAuthorized(context.Background(), stores, client, &runtime, func(ctx context.Context, api *APIClient, token string) error {
+		return api.UpdateDeviceRole(ctx, token, "device-2", "admin")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.AccessToken != "renewed-access" || runtime.RefreshToken != "renewed-refresh" {
+		t.Fatalf("runtime tokens were not refreshed: %+v", runtime)
+	}
+	saved, err := stores.LoadRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.AccessToken != "renewed-access" || saved.RefreshToken != "renewed-refresh" {
+		t.Fatalf("saved tokens were not refreshed: %+v", saved)
 	}
 }
 

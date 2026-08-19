@@ -238,10 +238,20 @@ class ClipboardRepository(
     }
 
     fun revokeDevice(device: DeviceModel) {
-        if (device.current || device.revokedAt != null) return
+        if (!device.canRevoke) return
         scope.launch {
             runCatching {
                 authorized { api, token -> api.revoke(token, device.id) }
+                refreshDevices()
+            }.onFailure(::setFailure)
+        }
+    }
+
+    fun setDeviceRole(device: DeviceModel, role: String) {
+        if (!device.canChangeRole || role !in setOf("admin", "member")) return
+        scope.launch {
+            runCatching {
+                authorized { api, token -> api.updateDeviceRole(token, device.id, role) }
                 refreshDevices()
             }.onFailure(::setFailure)
         }

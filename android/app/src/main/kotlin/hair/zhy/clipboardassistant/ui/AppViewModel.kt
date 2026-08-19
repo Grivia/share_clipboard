@@ -23,6 +23,7 @@ class AppViewModel(private val repository: ClipboardRepository) : ViewModel() {
     fun setSyncEnabled(enabled: Boolean) = repository.setSyncEnabled(enabled)
     fun refreshDevices() = repository.refreshDevicesAsync()
     fun revokeDevice(device: DeviceModel) = repository.revokeDevice(device)
+    fun setDeviceRole(device: DeviceModel, role: String) = repository.setDeviceRole(device, role)
     fun logout() = repository.logout()
 
     companion object {

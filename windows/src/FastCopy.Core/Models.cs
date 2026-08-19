@@ -32,13 +32,16 @@ public sealed record DeviceModel(
     string Platform,
     string OsVersion,
     string AppVersion,
+    string? Role,
     string FirstLoginAt,
     string LastLoginAt,
     string? LastSeenAt,
     string? RevokedAt,
     bool LoggedIn,
     bool Online,
-    bool Current);
+    bool Current,
+    bool CanRevoke,
+    bool CanChangeRole);
 
 public sealed record SessionTokens(
     string AccessToken,
@@ -81,6 +84,8 @@ public sealed record WebSocketEnvelope(string Type);
 internal sealed record RefreshRequest(string RefreshToken);
 
 internal sealed record AcknowledgeRequest(long Seq);
+
+internal sealed record UpdateDeviceRoleRequest(string Role);
 
 internal sealed record ApiErrorDetail(string Code, string Message);
 

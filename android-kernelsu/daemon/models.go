@@ -2,7 +2,7 @@ package main
 
 import "time"
 
-const daemonVersion = "0.3.4"
+const daemonVersion = "0.3.5"
 
 type UserConfig struct {
 	Enabled   bool   `json:"enabled"`
@@ -97,13 +97,18 @@ type ClipsResponse struct {
 }
 
 type DeviceSummary struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	Platform    string `json:"platform"`
-	OSVersion   string `json:"os_version"`
-	AppVersion  string `json:"app_version"`
-	Online      bool   `json:"online"`
-	Current     bool   `json:"current"`
+	ID            string  `json:"id"`
+	DisplayName   string  `json:"display_name"`
+	Platform      string  `json:"platform"`
+	OSVersion     string  `json:"os_version"`
+	AppVersion    string  `json:"app_version"`
+	Role          string  `json:"role"`
+	RevokedAt     *string `json:"revoked_at,omitempty"`
+	LoggedIn      bool    `json:"logged_in"`
+	Online        bool    `json:"online"`
+	Current       bool    `json:"current"`
+	CanRevoke     bool    `json:"can_revoke"`
+	CanChangeRole bool    `json:"can_change_role"`
 }
 
 type DevicesResponse struct {
@@ -126,6 +131,7 @@ type DaemonStatus struct {
 	Pending           int             `json:"pending"`
 	DeviceID          string          `json:"device_id,omitempty"`
 	OnlineDevices     []DeviceSummary `json:"online_devices"`
+	Devices           []DeviceSummary `json:"devices"`
 	DevicesLoaded     bool            `json:"devices_loaded"`
 	DevicesRefreshing bool            `json:"devices_refreshing"`
 	DevicesError      string          `json:"devices_error,omitempty"`

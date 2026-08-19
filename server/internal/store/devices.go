@@ -10,13 +10,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrDeviceNotFound = errors.New("device not found")
+var (
+	ErrDeviceNotFound    = errors.New("device not found")
+	ErrDevicePermission  = errors.New("device permission denied")
+	ErrInvalidDeviceRole = errors.New("invalid device role")
+)
 
 func (s *Store) Devices(ctx context.Context, userID, currentDeviceID string) ([]model.Device, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT d.id::text, d.user_id::text, d.reported_name, d.custom_name,
 			COALESCE(NULLIF(d.custom_name, ''), d.reported_name),
-			d.platform, d.os_version, d.app_version, d.first_login_at,
+			d.platform, d.os_version, d.app_version, d.role, d.first_login_at,
 			d.last_login_at, d.last_seen_at, d.revoked_at,
 			EXISTS (
 				SELECT 1 FROM auth_sessions s
@@ -38,12 +42,25 @@ func (s *Store) Devices(ctx context.Context, userID, currentDeviceID string) ([]
 		if err := rows.Scan(
 			&device.ID, &device.UserID, &device.ReportedName, &device.CustomName,
 			&device.DisplayName, &device.Platform, &device.OSVersion,
-			&device.AppVersion, &device.FirstLoginAt, &device.LastLoginAt,
+			&device.AppVersion, &device.Role, &device.FirstLoginAt, &device.LastLoginAt,
 			&device.LastSeenAt, &device.RevokedAt, &device.LoggedIn, &device.Current,
 		); err != nil {
 			return nil, err
 		}
 		devices = append(devices, device)
+	}
+	var actorRole model.DeviceRole
+	for _, device := range devices {
+		if device.Current {
+			actorRole = device.Role
+			break
+		}
+	}
+	for index := range devices {
+		device := &devices[index]
+		active := device.RevokedAt == nil
+		device.CanRevoke = active && model.CanRevokeDevice(actorRole, device.Role, device.Current)
+		device.CanChangeRole = active && model.CanChangeDeviceRole(actorRole, device.Role, device.Current)
 	}
 	return devices, rows.Err()
 }
@@ -55,12 +72,12 @@ func (s *Store) RenameDevice(ctx context.Context, userID, deviceID, name string)
 		WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL
 		RETURNING id::text, user_id::text, reported_name, custom_name,
 			COALESCE(NULLIF(custom_name, ''), reported_name), platform,
-			os_version, app_version, first_login_at, last_login_at,
+			os_version, app_version, role, first_login_at, last_login_at,
 			last_seen_at, revoked_at`, userID, deviceID, name,
 	).Scan(
 		&device.ID, &device.UserID, &device.ReportedName, &device.CustomName,
 		&device.DisplayName, &device.Platform, &device.OSVersion,
-		&device.AppVersion, &device.FirstLoginAt, &device.LastLoginAt,
+		&device.AppVersion, &device.Role, &device.FirstLoginAt, &device.LastLoginAt,
 		&device.LastSeenAt, &device.RevokedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -69,12 +86,22 @@ func (s *Store) RenameDevice(ctx context.Context, userID, deviceID, name string)
 	return device, err
 }
 
-func (s *Store) RevokeDevice(ctx context.Context, userID, deviceID string) error {
+func (s *Store) RevokeDevice(ctx context.Context, userID, actorDeviceID, deviceID string) error {
+	if actorDeviceID == deviceID {
+		return ErrDevicePermission
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	actorRole, targetRole, err := lockedDeviceRoles(ctx, tx, userID, actorDeviceID, deviceID)
+	if err != nil {
+		return err
+	}
+	if !model.CanRevokeDevice(actorRole, targetRole, false) {
+		return ErrDevicePermission
+	}
 	result, err := tx.Exec(ctx, `
 		UPDATE devices SET revoked_at = now()
 		WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL`, userID, deviceID)
@@ -94,6 +121,65 @@ func (s *Store) RevokeDevice(ctx context.Context, userID, deviceID string) error
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) SetDeviceRole(
+	ctx context.Context,
+	userID, actorDeviceID, deviceID string,
+	role model.DeviceRole,
+) error {
+	if !model.ValidAssignableDeviceRole(role) {
+		return ErrInvalidDeviceRole
+	}
+	if actorDeviceID == deviceID {
+		return ErrDevicePermission
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	actorRole, targetRole, err := lockedDeviceRoles(ctx, tx, userID, actorDeviceID, deviceID)
+	if err != nil {
+		return err
+	}
+	if !model.CanChangeDeviceRole(actorRole, targetRole, false) {
+		return ErrDevicePermission
+	}
+	result, err := tx.Exec(ctx, `
+		UPDATE devices SET role = $3
+		WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL`,
+		userID, deviceID, role)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrDeviceNotFound
+	}
+	return tx.Commit(ctx)
+}
+
+func lockedDeviceRoles(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID, actorDeviceID, targetDeviceID string,
+) (model.DeviceRole, model.DeviceRole, error) {
+	var actorRole, targetRole model.DeviceRole
+	err := tx.QueryRow(ctx, `
+		SELECT actor.role, target.role
+		FROM devices actor
+		JOIN devices target ON target.user_id = actor.user_id
+		WHERE actor.user_id = $1
+		  AND actor.id = $2
+		  AND actor.revoked_at IS NULL
+		  AND target.id = $3
+		  AND target.revoked_at IS NULL
+		FOR UPDATE OF actor, target`, userID, actorDeviceID, targetDeviceID,
+	).Scan(&actorRole, &targetRole)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", ErrDeviceNotFound
+	}
+	return actorRole, targetRole, err
 }
 
 func (s *Store) TouchDevice(ctx context.Context, deviceID string, at time.Time) error {

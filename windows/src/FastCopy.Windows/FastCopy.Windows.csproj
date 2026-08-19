@@ -13,7 +13,7 @@
     <Title>粘贴板助手</Title>
     <Product>粘贴板助手</Product>
     <Description>端到端加密的跨设备文本剪贴板同步工具</Description>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

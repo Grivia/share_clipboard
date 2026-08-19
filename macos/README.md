@@ -12,13 +12,18 @@ chmod +x scripts/build-app.sh
 open 'dist/粘贴板助手.app'
 ```
 
-The same command also creates `dist/粘贴板助手-macos-v0.2.2.zip` for transfer to
+The same command also creates `dist/粘贴板助手-macos-v0.2.3.zip` for transfer to
 another Mac.
 
 WebSocket events trigger immediate cursor synchronization. A healthy connection
 uses a five-minute safety reconciliation, disconnected operation falls back to
 one-minute REST reconciliation, and failed uploads retry with 2/5/15/30/60-second
 backoff. Opening the settings window refreshes the device list.
+
+The device list shows each device role. A super-admin device can grant or
+remove administrator access; super admins and admins can force permitted
+devices offline. Actions are hidden when the server does not grant the matching
+capability.
 
 The client has one authentication flow. A new account is registered
 automatically, while an existing account is signed in. The encryption key is
