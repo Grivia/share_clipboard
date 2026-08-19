@@ -21,9 +21,8 @@ struct FastCopyMacApp: App {
             MenuContent()
                 .environmentObject(model)
         } label: {
-            Image(systemName: model.statusIcon)
-                .accessibilityLabel("粘贴板助手")
-                .task { await model.start() }
+            MenuBarLabel()
+                .environmentObject(model)
         }
         .menuBarExtraStyle(.menu)
 
@@ -34,6 +33,36 @@ struct FastCopyMacApp: App {
         }
         .defaultSize(width: 480, height: 440)
         .windowResizability(.contentMinSize)
+    }
+}
+
+private struct MenuBarLabel: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+    @State private var didFinishStartup = false
+
+    var body: some View {
+        Image(systemName: model.statusIcon)
+            .accessibilityLabel("粘贴板助手")
+            .task {
+                await model.start()
+                didFinishStartup = true
+                presentLoginIfNeeded()
+            }
+            .onChange(of: model.isAuthenticated) { isAuthenticated in
+                guard didFinishStartup, !isAuthenticated else { return }
+                presentMainPanel()
+            }
+    }
+
+    private func presentLoginIfNeeded() {
+        guard !model.isAuthenticated else { return }
+        presentMainPanel()
+    }
+
+    private func presentMainPanel() {
+        openWindow(id: "settings")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

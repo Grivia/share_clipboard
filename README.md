@@ -11,7 +11,7 @@
 | 组件 | 状态 | 运行环境 | 当前版本 |
 | --- | --- | --- | --- |
 | 服务端 | 可用 | Linux / Docker，Go 1.25，PostgreSQL 17 | 协议 v1 |
-| macOS | 可用 | macOS 13 及以上 | 0.2.5 |
+| macOS | 可用 | macOS 13 及以上 | 0.2.6 |
 | Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.2 |
 | Android | 可用 | Android 10 及以上 | 0.1.1 |
 | Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.5 |
@@ -199,10 +199,10 @@ open 'dist/粘贴板助手.app'
 
 ```text
 macos/dist/粘贴板助手.app
-macos/dist/粘贴板助手-macos-v0.2.5.zip
+macos/dist/粘贴板助手-macos-v0.2.6.zip
 ```
 
-应用以 `LSUIElement` 方式运行，只显示在 macOS 菜单栏，不占用 Dock。菜单可以暂停同步、立即同步、打开设备与设置窗口或退出应用。
+应用以 `LSUIElement` 方式运行，只显示在 macOS 菜单栏，不占用 Dock。启动时若未登录会自动弹出主面板；已登录时保持后台启动。会话在运行期间失效时，主面板也会自动切换到登录页并显示到前台。菜单可以暂停同步、立即同步、打开设备与设置窗口或退出应用。
 
 从 0.2.5 开始，macOS 客户端使用 AES-256-GCM 加密令牌、派生密钥和安装 ID。密文保存在 `~/Library/Application Support/hair.zhy.fastcopy/credentials.enc`，随机 256 位密钥保存在同目录的 `credentials.key`，目录权限为 `0700`，两个文件权限均为 `0600`。这样可以避免凭据以可直接阅读的 JSON 出现，同时保留无需输入密码的自动登录；由于密钥和密文都属于当前用户，同一 macOS 用户下能够读取这两个文件的程序仍然可以解密，因此它不是对本机恶意程序的强安全边界。
 

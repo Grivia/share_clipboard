@@ -662,7 +662,7 @@ final class AppModel: ObservableObject {
             reportedName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             platform: "macos",
             osVersion: "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.5"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.6"
         )
     }
 
