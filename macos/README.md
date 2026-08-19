@@ -12,7 +12,7 @@ chmod +x scripts/build-app.sh
 open 'dist/粘贴板助手.app'
 ```
 
-The same command also creates `dist/粘贴板助手-macos-v0.2.4.zip` for transfer to
+The same command also creates `dist/粘贴板助手-macos-v0.2.5.zip` for transfer to
 another Mac.
 
 WebSocket events trigger immediate cursor synchronization. A healthy connection
@@ -27,16 +27,18 @@ capability.
 
 The client has one authentication flow. A new account is registered
 automatically, while an existing account is signed in. Access tokens, the
-derived encryption key, and the installation ID are stored as plain JSON in
-`~/Library/Application Support/hair.zhy.fastcopy/credentials.json`. The file
-uses mode `0600`, but applications running as the same macOS user may still
-read it. This deliberately trades local security for unattended startup and
-avoids recurring Keychain authorization prompts.
+derived encryption key, and the installation ID are encrypted with AES-256-GCM
+in `~/Library/Application Support/hair.zhy.fastcopy/credentials.enc`. A random
+256-bit key is stored beside it in `credentials.key`; the directory uses mode
+`0700` and both files use mode `0600`. This prevents directly readable JSON but
+is not a strong boundary against software running as the same macOS user,
+because that software may read both the ciphertext and its key.
 
-Version 0.2.4 performs one legacy Keychain query on its first launch to retain
-the existing session and installation identity. After a successful import it
-never queries Keychain again. Depending on the old item access rules, macOS may
-show one or more final authorization dialogs during this one-time migration.
+Version 0.2.5 does not link or call any Keychain API. It converts the local
+plaintext `credentials.json` created by 0.2.4 into the encrypted files and then
+deletes the plaintext file. It does not import credentials from Keychain, so a
+direct upgrade from 0.2.3 or earlier requires signing in again and may create a
+new installation identity.
 
 The default production API is `https://zhy.hair/fastcopy`.
 

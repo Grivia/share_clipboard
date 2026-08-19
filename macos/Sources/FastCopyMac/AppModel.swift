@@ -79,12 +79,10 @@ final class AppModel: ObservableObject {
     private var pendingRetryTask: Task<Void, Never>?
     private var pendingRetryAttempt = 0
     private var refreshTask: Task<SessionTokens, Error>?
-    private var credentialMigrationError: Error?
 
     init() {
         let credentialStore = LocalCredentialStore()
         self.credentialStore = credentialStore
-        let credentialMigrationError = LegacyKeychainImporter.migrateIfNeeded(to: credentialStore)
         serverURL = defaults.string(forKey: Keys.serverURL) ?? "https://zhy.hair/fastcopy"
         account = defaults.string(forKey: Keys.account) ?? defaults.string(forKey: Keys.legacyEmail) ?? ""
         sharedKey = credentialStore.string(for: Keys.sharedKey) ?? ""
@@ -118,10 +116,6 @@ final class AppModel: ObservableObject {
             defaults.removeObject(forKey: Keys.pendingOwner)
             defaults.removeObject(forKey: Keys.keyDerivationVersion)
         }
-        if let credentialMigrationError {
-            self.credentialMigrationError = credentialMigrationError
-            errorText = credentialMigrationError.localizedDescription
-        }
     }
 
     var statusIcon: String {
@@ -146,13 +140,6 @@ final class AppModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            if credentialMigrationError != nil {
-                if let retryError = LegacyKeychainImporter.migrateIfNeeded(to: credentialStore) {
-                    credentialMigrationError = retryError
-                    throw retryError
-                }
-                credentialMigrationError = nil
-            }
             let normalizedAccount = account.trimmingCharacters(in: .whitespacesAndNewlines)
             let enteredPassword = password
             let client = APIClient(baseURL: serverURL)
@@ -675,7 +662,7 @@ final class AppModel: ObservableObject {
             reportedName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             platform: "macos",
             osVersion: "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.4"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.5"
         )
     }
 

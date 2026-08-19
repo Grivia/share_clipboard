@@ -11,7 +11,7 @@
 | 组件 | 状态 | 运行环境 | 当前版本 |
 | --- | --- | --- | --- |
 | 服务端 | 可用 | Linux / Docker，Go 1.25，PostgreSQL 17 | 协议 v1 |
-| macOS | 可用 | macOS 13 及以上 | 0.2.4 |
+| macOS | 可用 | macOS 13 及以上 | 0.2.5 |
 | Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.2 |
 | Android | 可用 | Android 10 及以上 | 0.1.1 |
 | Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.5 |
@@ -84,7 +84,7 @@ fastcopy:v1|<client_event_id>|text/plain
 
 | 平台 | 保存方式 |
 | --- | --- |
-| macOS | 访问令牌、刷新令牌、派生密钥和安装 ID 保存在权限为 `0600` 的本地 JSON；同一 macOS 用户下的其他程序仍可能读取 |
+| macOS | 凭据使用 AES-256-GCM 加密后保存在 `credentials.enc`，本地随机密钥保存在 `credentials.key`；两者权限均为 `0600` |
 | Windows | 凭据和派生密钥由当前 Windows 用户的 DPAPI 保护；待上传队列只包含密文 |
 | Android KernelSU | 私有状态保存在 `/data/adb/fastcopy`，目录权限 `0700`、文件权限 `0600`；首次认证后配置中的密码会被删除 |
 | Android | 令牌和派生密钥使用 Android Keystore 加密；DataStore 中只保存密文队列与游标 |
@@ -199,12 +199,14 @@ open 'dist/粘贴板助手.app'
 
 ```text
 macos/dist/粘贴板助手.app
-macos/dist/粘贴板助手-macos-v0.2.4.zip
+macos/dist/粘贴板助手-macos-v0.2.5.zip
 ```
 
 应用以 `LSUIElement` 方式运行，只显示在 macOS 菜单栏，不占用 Dock。菜单可以暂停同步、立即同步、打开设备与设置窗口或退出应用。
 
-从 0.2.4 开始，macOS 客户端把令牌、派生密钥和安装 ID 明文保存在 `~/Library/Application Support/hair.zhy.fastcopy/credentials.json`，以换取无需输入密码的自动启动，并避免每次构建后反复请求钥匙串权限。文件权限为 `0600`，但这不能阻止同一 macOS 用户下的其他程序读取。首次从旧版本升级时会批量读取一次旧钥匙串，以保留当前会话和超级管理员设备身份；迁移成功后不再访问钥匙串。
+从 0.2.5 开始，macOS 客户端使用 AES-256-GCM 加密令牌、派生密钥和安装 ID。密文保存在 `~/Library/Application Support/hair.zhy.fastcopy/credentials.enc`，随机 256 位密钥保存在同目录的 `credentials.key`，目录权限为 `0700`，两个文件权限均为 `0600`。这样可以避免凭据以可直接阅读的 JSON 出现，同时保留无需输入密码的自动登录；由于密钥和密文都属于当前用户，同一 macOS 用户下能够读取这两个文件的程序仍然可以解密，因此它不是对本机恶意程序的强安全边界。
+
+macOS 0.2.5 不再链接或调用钥匙串 API，也不包含从钥匙串迁移凭据的逻辑。若 0.2.4 已经生成 `credentials.json`，0.2.5 会在首次读取时将该本地明文文件转换为上述加密文件，成功后删除原文件；若从 0.2.3 或更旧版本直接升级，则需要重新登录，并可能以新的安装 ID 注册为一台新设备。
 
 当前构建脚本使用 ad-hoc 签名，适合本机和受控分发。其他 Mac 仍可能出现 Gatekeeper 提示；面向普通用户分发时，应改用 Apple Developer ID 签名并完成 notarization。
 

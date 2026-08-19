@@ -14,8 +14,7 @@ let package = Package(
             path: "Sources/FastCopyMac",
             linkerSettings: [
                 .linkedFramework("AppKit"),
-                .linkedFramework("CryptoKit"),
-                .linkedFramework("Security")
+                .linkedFramework("CryptoKit")
             ]
         ),
         .testTarget(
