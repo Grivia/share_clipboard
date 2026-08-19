@@ -58,7 +58,7 @@ final class AppModel: ObservableObject {
     }
 
     private let defaults = UserDefaults.standard
-    private let secureStore = SecureStore()
+    private let credentialStore: LocalCredentialStore
     private let pendingStore = PendingUploadStore()
     private let clipboard = ClipboardMonitor()
     private var started = false
@@ -79,13 +79,17 @@ final class AppModel: ObservableObject {
     private var pendingRetryTask: Task<Void, Never>?
     private var pendingRetryAttempt = 0
     private var refreshTask: Task<SessionTokens, Error>?
+    private var credentialMigrationError: Error?
 
     init() {
+        let credentialStore = LocalCredentialStore()
+        self.credentialStore = credentialStore
+        let credentialMigrationError = LegacyKeychainImporter.migrateIfNeeded(to: credentialStore)
         serverURL = defaults.string(forKey: Keys.serverURL) ?? "https://zhy.hair/fastcopy"
         account = defaults.string(forKey: Keys.account) ?? defaults.string(forKey: Keys.legacyEmail) ?? ""
-        sharedKey = secureStore.string(for: Keys.sharedKey) ?? ""
-        accessToken = secureStore.string(for: Keys.accessToken)
-        refreshToken = secureStore.string(for: Keys.refreshToken)
+        sharedKey = credentialStore.string(for: Keys.sharedKey) ?? ""
+        accessToken = credentialStore.string(for: Keys.accessToken)
+        refreshToken = credentialStore.string(for: Keys.refreshToken)
         userID = defaults.string(forKey: Keys.userID)
         deviceID = defaults.string(forKey: Keys.deviceID)
         pendingUploads = pendingStore.load()
@@ -106,13 +110,17 @@ final class AppModel: ObservableObject {
             sharedKey = ""
             pendingUploads.removeAll()
             pendingStore.clear()
-            secureStore.delete(Keys.accessToken)
-            secureStore.delete(Keys.refreshToken)
-            secureStore.delete(Keys.sharedKey)
+            credentialStore.delete(Keys.accessToken)
+            credentialStore.delete(Keys.refreshToken)
+            credentialStore.delete(Keys.sharedKey)
             defaults.removeObject(forKey: Keys.userID)
             defaults.removeObject(forKey: Keys.deviceID)
             defaults.removeObject(forKey: Keys.pendingOwner)
             defaults.removeObject(forKey: Keys.keyDerivationVersion)
+        }
+        if let credentialMigrationError {
+            self.credentialMigrationError = credentialMigrationError
+            errorText = credentialMigrationError.localizedDescription
         }
     }
 
@@ -138,6 +146,13 @@ final class AppModel: ObservableObject {
         defer { isBusy = false }
 
         do {
+            if credentialMigrationError != nil {
+                if let retryError = LegacyKeychainImporter.migrateIfNeeded(to: credentialStore) {
+                    credentialMigrationError = retryError
+                    throw retryError
+                }
+                credentialMigrationError = nil
+            }
             let normalizedAccount = account.trimmingCharacters(in: .whitespacesAndNewlines)
             let enteredPassword = password
             let client = APIClient(baseURL: serverURL)
@@ -220,13 +235,15 @@ final class AppModel: ObservableObject {
 
     private func acceptAuthentication(_ response: AuthResponse, derivedKey: String) throws {
         do {
-            try secureStore.set(response.tokens.accessToken, for: Keys.accessToken)
-            try secureStore.set(response.tokens.refreshToken, for: Keys.refreshToken)
-            try secureStore.set(derivedKey, for: Keys.sharedKey)
+            try credentialStore.set([
+                Keys.accessToken: response.tokens.accessToken,
+                Keys.refreshToken: response.tokens.refreshToken,
+                Keys.sharedKey: derivedKey
+            ])
         } catch {
-            secureStore.delete(Keys.accessToken)
-            secureStore.delete(Keys.refreshToken)
-            secureStore.delete(Keys.sharedKey)
+            credentialStore.delete(Keys.accessToken)
+            credentialStore.delete(Keys.refreshToken)
+            credentialStore.delete(Keys.sharedKey)
             throw error
         }
 
@@ -277,9 +294,9 @@ final class AppModel: ObservableObject {
         defaults.removeObject(forKey: Keys.deviceID)
         defaults.removeObject(forKey: Keys.pendingOwner)
         defaults.removeObject(forKey: Keys.keyDerivationVersion)
-        secureStore.delete(Keys.accessToken)
-        secureStore.delete(Keys.refreshToken)
-        secureStore.delete(Keys.sharedKey)
+        credentialStore.delete(Keys.accessToken)
+        credentialStore.delete(Keys.refreshToken)
+        credentialStore.delete(Keys.sharedKey)
         errorText = nil
         statusText = "尚未登录"
     }
@@ -618,8 +635,10 @@ final class AppModel: ObservableObject {
     private func persist(tokens: SessionTokens) throws {
         accessToken = tokens.accessToken
         refreshToken = tokens.refreshToken
-        try secureStore.set(tokens.accessToken, for: Keys.accessToken)
-        try secureStore.set(tokens.refreshToken, for: Keys.refreshToken)
+        try credentialStore.set([
+            Keys.accessToken: tokens.accessToken,
+            Keys.refreshToken: tokens.refreshToken
+        ])
     }
 
     private var lastSequence: Int64 {
@@ -634,7 +653,7 @@ final class AppModel: ObservableObject {
     }
 
     private func installationID() -> String {
-        if let value = secureStore.string(for: Keys.installationID) {
+        if let value = credentialStore.string(for: Keys.installationID) {
             return value
         }
         if let value = defaults.string(forKey: Keys.installationID) {
@@ -642,7 +661,7 @@ final class AppModel: ObservableObject {
         }
         let value = UUID().uuidString.lowercased()
         do {
-            try secureStore.set(value, for: Keys.installationID)
+            try credentialStore.set(value, for: Keys.installationID)
         } catch {
             defaults.set(value, forKey: Keys.installationID)
         }
@@ -656,7 +675,7 @@ final class AppModel: ObservableObject {
             reportedName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             platform: "macos",
             osVersion: "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.3"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.4"
         )
     }
 

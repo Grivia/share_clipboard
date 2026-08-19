@@ -12,7 +12,7 @@ chmod +x scripts/build-app.sh
 open 'dist/粘贴板助手.app'
 ```
 
-The same command also creates `dist/粘贴板助手-macos-v0.2.3.zip` for transfer to
+The same command also creates `dist/粘贴板助手-macos-v0.2.4.zip` for transfer to
 another Mac.
 
 WebSocket events trigger immediate cursor synchronization. A healthy connection
@@ -26,10 +26,17 @@ devices offline. Actions are hidden when the server does not grant the matching
 capability.
 
 The client has one authentication flow. A new account is registered
-automatically, while an existing account is signed in. The encryption key is
-derived locally after authentication and stored in Keychain; it is never shown
-to the user or sent to the server. The server never receives clipboard
-plaintext.
+automatically, while an existing account is signed in. Access tokens, the
+derived encryption key, and the installation ID are stored as plain JSON in
+`~/Library/Application Support/hair.zhy.fastcopy/credentials.json`. The file
+uses mode `0600`, but applications running as the same macOS user may still
+read it. This deliberately trades local security for unattended startup and
+avoids recurring Keychain authorization prompts.
+
+Version 0.2.4 performs one legacy Keychain query on its first launch to retain
+the existing session and installation identity. After a successful import it
+never queries Keychain again. Depending on the old item access rules, macOS may
+show one or more final authorization dialogs during this one-time migration.
 
 The default production API is `https://zhy.hair/fastcopy`.
 
