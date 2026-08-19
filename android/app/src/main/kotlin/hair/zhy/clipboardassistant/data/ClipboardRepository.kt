@@ -16,9 +16,11 @@ import hair.zhy.clipboardassistant.data.remote.ApiException
 import hair.zhy.clipboardassistant.platform.ClipboardController
 import hair.zhy.clipboardassistant.platform.NotificationController
 import hair.zhy.clipboardassistant.sync.SyncScheduler
+import java.io.IOException
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +35,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.WebSocket
+
+private class SessionExpiredException(cause: Throwable? = null) :
+    IOException("登录状态已失效，请重新登录", cause)
 
 data class RepositoryState(
     val initialized: Boolean = false,
@@ -74,7 +79,17 @@ class ClipboardRepository(
     private var lastLocalDigest: ByteArray? = null
 
     init {
-        scope.launch { initialize() }
+        launchHandled { initialize() }
+    }
+
+    private fun launchHandled(block: suspend () -> Unit): Job = scope.launch {
+        try {
+            block()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            setFailure(error)
+        }
     }
 
     private suspend fun initialize() {
@@ -157,10 +172,10 @@ class ClipboardRepository(
     }
 
     fun setForeground(isForeground: Boolean) {
-        scope.launch {
+        launchHandled {
             ready.await()
             foreground = isForeground
-            if (!hasSession() || !persisted.syncEnabled) return@launch
+            if (!hasSession() || !persisted.syncEnabled) return@launchHandled
             if (isForeground) {
                 startForegroundSync()
                 applyPersistedRemote()
@@ -173,7 +188,7 @@ class ClipboardRepository(
     }
 
     fun sendCurrentClipboard() {
-        scope.launch {
+        launchHandled {
             ready.await()
             val text = clipboard.readText()
             if (text == null) setFailure(IllegalStateException("当前剪贴板没有文本"))
@@ -184,7 +199,7 @@ class ClipboardRepository(
     fun copyLatest() {
         val text = _state.value.latestText ?: return
         clipboard.writeRemote(text)
-        scope.launch {
+        launchHandled {
             persisted.latestRemote?.seq?.let { sequence ->
                 lastAppliedSeq = sequence
                 persisted = persisted.copy(lastAppliedSeq = sequence)
@@ -195,7 +210,7 @@ class ClipboardRepository(
     }
 
     fun refreshNow() {
-        scope.launch {
+        launchHandled {
             ready.await()
             update { it.copy(busy = true, error = null, status = "正在同步") }
             runCatching {
@@ -210,14 +225,21 @@ class ClipboardRepository(
     suspend fun backgroundSync(): Boolean {
         ready.await()
         if (!hasSession() || !persisted.syncEnabled) return true
-        return runCatching {
+        return try {
             flushPending()
             sync(writeClipboard = false, notify = true)
-        }.isSuccess
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: SessionExpiredException) {
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun setSyncEnabled(enabled: Boolean) {
-        scope.launch {
+        launchHandled {
             ready.await()
             persisted = persisted.copy(syncEnabled = enabled)
             stateStore.save(persisted)
@@ -234,12 +256,12 @@ class ClipboardRepository(
     }
 
     fun refreshDevicesAsync() {
-        scope.launch { runCatching { refreshDevices() }.onFailure(::setFailure) }
+        launchHandled { runCatching { refreshDevices() }.onFailure(::setFailure) }
     }
 
     fun revokeDevice(device: DeviceModel) {
         if (!device.canRevoke) return
-        scope.launch {
+        launchHandled {
             runCatching {
                 authorized { api, token -> api.revoke(token, device.id) }
                 refreshDevices()
@@ -249,7 +271,7 @@ class ClipboardRepository(
 
     fun setDeviceRole(device: DeviceModel, role: String) {
         if (!device.canChangeRole || role !in setOf("admin", "member")) return
-        scope.launch {
+        launchHandled {
             runCatching {
                 authorized { api, token -> api.updateDeviceRole(token, device.id, role) }
                 refreshDevices()
@@ -258,37 +280,17 @@ class ClipboardRepository(
     }
 
     fun logout() {
-        scope.launch {
+        launchHandled {
             ready.await()
             runCatching {
                 if (hasSession()) authorized { api, token -> api.logout(token) }
             }
-            clipboard.stop()
-            closeSocket()
-            scheduler.cancel()
-            secretStore.clear()
-            secrets = null
-            persisted = persisted.copy(
-                userId = null,
-                deviceId = null,
-                lastSeq = 0,
-                lastAppliedSeq = 0,
-                pendingUploads = emptyList(),
-                latestRemote = null,
-            )
-            stateStore.save(persisted)
-            _state.value = RepositoryState(
-                initialized = true,
-                status = "尚未登录",
-                serverUrl = persisted.serverUrl,
-                account = persisted.account,
-                syncEnabled = persisted.syncEnabled,
-            )
+            clearAuthentication(status = "尚未登录", error = null)
         }
     }
 
     private fun startForegroundSync() {
-        clipboard.start { text -> scope.launch { queueLocalText(text, force = false) } }
+        clipboard.start { text -> launchHandled { queueLocalText(text, force = false) } }
         connectSocket()
     }
 
@@ -297,15 +299,25 @@ class ClipboardRepository(
         val accessToken = secrets?.accessToken ?: return
         socket = apiFactory(persisted.serverUrl).webSocket(
             accessToken = accessToken,
-            onConnected = { update { it.copy(connected = true, status = "已连接", error = null) } },
+            onConnected = {
+                if (hasSession()) update { it.copy(connected = true, status = "已连接", error = null) }
+            },
             onEvent = { event ->
-                if (event.type == "clip.created") scope.launch { sync(writeClipboard = foreground, notify = false) }
-                if (event.type.startsWith("device.")) scope.launch { refreshDevices() }
+                if (event.type == "clip.created") {
+                    launchHandled { sync(writeClipboard = foreground, notify = false) }
+                }
+                if (event.type.startsWith("device.")) launchHandled { refreshDevices() }
             },
             onDisconnected = {
                 socket = null
-                update { state -> state.copy(connected = false, status = "等待重连") }
-                scheduleReconnect()
+                val canReconnect = hasSession() && foreground && persisted.syncEnabled
+                update { state ->
+                    state.copy(
+                        connected = false,
+                        status = if (canReconnect) "等待重连" else state.status,
+                    )
+                }
+                if (canReconnect) scheduleReconnect()
             },
         )
     }
@@ -313,7 +325,7 @@ class ClipboardRepository(
     private fun scheduleReconnect() {
         reconnectJob?.cancel()
         if (!foreground || !persisted.syncEnabled || !hasSession()) return
-        reconnectJob = scope.launch {
+        reconnectJob = launchHandled {
             delay(5_000)
             runCatching { sync(writeClipboard = foreground, notify = false) }
                 .onFailure(::setFailure)
@@ -416,19 +428,68 @@ class ClipboardRepository(
             if (!error.unauthorized) throw error
         }
         return authMutex.withLock {
-            val latest = secrets ?: throw IllegalStateException("请重新登录")
-            if (latest.accessToken != current.accessToken) {
-                return@withLock operation(api, latest.accessToken)
+            val latest = secrets ?: throw SessionExpiredException()
+            val accessToken = if (latest.accessToken != current.accessToken) {
+                latest.accessToken
+            } else {
+                val refreshed = try {
+                    api.refresh(latest.refreshToken).tokens
+                } catch (error: ApiException) {
+                    if (error.unauthorized || error.code == "INVALID_REFRESH_TOKEN") {
+                        expireAuthentication(error)
+                    }
+                    throw error
+                }
+                val replacement = latest.copy(
+                    accessToken = refreshed.accessToken,
+                    refreshToken = refreshed.refreshToken,
+                )
+                secrets = replacement
+                secretStore.save(replacement)
+                replacement.accessToken
             }
-            val refreshed = api.refresh(latest.refreshToken).tokens
-            val replacement = latest.copy(
-                accessToken = refreshed.accessToken,
-                refreshToken = refreshed.refreshToken,
-            )
-            secrets = replacement
-            secretStore.save(replacement)
-            operation(api, replacement.accessToken)
+            try {
+                operation(api, accessToken)
+            } catch (error: ApiException) {
+                if (error.unauthorized) expireAuthentication(error)
+                throw error
+            }
         }
+    }
+
+    private suspend fun expireAuthentication(cause: ApiException): Nothing {
+        clearAuthentication(
+            status = "登录已过期",
+            error = "登录状态已失效，请重新登录",
+        )
+        throw SessionExpiredException(cause)
+    }
+
+    private suspend fun clearAuthentication(status: String, error: String?) {
+        secrets = null
+        secretStore.clear()
+        persisted = persisted.copy(
+            userId = null,
+            deviceId = null,
+            lastSeq = 0,
+            lastAppliedSeq = 0,
+            pendingUploads = emptyList(),
+            latestRemote = null,
+        )
+        stateStore.save(persisted)
+        lastAppliedSeq = 0
+        lastLocalDigest = null
+        scheduler.cancel()
+        clipboard.stop()
+        closeSocket()
+        _state.value = RepositoryState(
+            initialized = true,
+            status = status,
+            error = error,
+            serverUrl = persisted.serverUrl,
+            account = persisted.account,
+            syncEnabled = persisted.syncEnabled,
+        )
     }
 
     private fun hasSession(): Boolean =
@@ -457,10 +518,19 @@ class ClipboardRepository(
     }
 
     private fun setFailure(error: Throwable) {
-        update { it.copy(error = userMessage(error), status = "操作失败", busy = false) }
+        update {
+            it.copy(
+                authenticated = if (error is SessionExpiredException) false else it.authenticated,
+                connected = if (error is SessionExpiredException) false else it.connected,
+                error = userMessage(error),
+                status = if (error is SessionExpiredException) "登录已过期" else "操作失败",
+                busy = false,
+            )
+        }
     }
 
     private fun userMessage(error: Throwable): String = when (error) {
+        is SessionExpiredException -> error.message ?: "登录状态已失效，请重新登录"
         is ApiException -> when (error.code) {
             "INVALID_CREDENTIALS" -> "账号或密码不正确"
             "REGISTRATION_LIMIT_REACHED" -> "服务端已达到账号上限"

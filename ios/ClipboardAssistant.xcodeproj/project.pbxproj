@@ -35,12 +35,12 @@
 		3BDB3065DCBE90C7F7DEA066 /* ClipboardCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardCryptoTests.swift; sourceTree = "<group>"; };
 		4077717DE0C3FC7842BB83D2 /* ClipboardCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardCrypto.swift; sourceTree = "<group>"; };
 		434AF3B384C19875CEF3F683 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
-		7843812E361EA42DD73F62BC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7843812E361EA42DD73F62BC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		84D35DBDF8C1E417C271B28A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A21D40C88A5527797F2733C0 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		A2B69C6350D287B775F576D6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		A9976B169182BDFFFAF3726B /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		CBACF9184A90CF8852231266 /* ClipboardAssistant.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ClipboardAssistant.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CBACF9184A90CF8852231266 /* ClipboardAssistant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipboardAssistant.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFDA56FB24B55143F7EB4FEE /* PushCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushCoordinator.swift; sourceTree = "<group>"; };
 		E1049E8E0CD3B7879E9D40CA /* ClipboardAssistantTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ClipboardAssistantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F28694DAB3F0D2E9325A8C5E /* ClipboardAssistantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardAssistantApp.swift; sourceTree = "<group>"; };
@@ -243,6 +243,7 @@
 				CODE_SIGN_ENTITLEMENTS = Resources/ClipboardAssistant.Release.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7KDQDNQ4T5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -347,6 +348,7 @@
 				CODE_SIGN_ENTITLEMENTS = Resources/ClipboardAssistant.Debug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7KDQDNQ4T5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
