@@ -6,6 +6,14 @@
 
 当前仓库已实现 Go 服务端、macOS 菜单栏客户端、Windows 托盘客户端、普通 Android 客户端、iOS 客户端，以及适用于已 Root Android 设备的 KernelSU 模块。
 
+## 双向同步演示
+
+macOS 复制后，Android 会自动接收并在搜狗输入法中显示；Android 复制新内容后，也可以直接在 macOS 中粘贴。
+
+<p align="center">
+  <img src="docs/assets/mac-android-clipboard-sync.gif" width="960" alt="macOS 与 Android 双向剪贴板同步演示">
+</p>
+
 ## 当前状态
 
 | 组件 | 状态 | 运行环境 | 当前版本 |
