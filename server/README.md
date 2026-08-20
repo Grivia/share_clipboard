@@ -35,9 +35,8 @@ remote device-management permission.
 `GET /v1/devices` returns `role`, `can_revoke`, and `can_change_role` for each
 target device. Role changes use `PATCH /v1/devices/<device_id>/role`. Capability
 fields are only UI guidance: role checks and row locks are applied again inside
-the database transaction. Migration `004_device_roles.sql` promotes the oldest
-non-revoked device in every existing account, falling back to its oldest
-historical device.
+the database transaction. The complete user, device-role, clipboard, session,
+and push-token schema is created by the fresh-install baseline migration.
 
 ## iOS push notifications
 

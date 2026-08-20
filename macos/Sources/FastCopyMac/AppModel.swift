@@ -15,6 +15,12 @@ enum SyncTiming {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private static let webSocketDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
+
     @Published var serverURL: String
     @Published var account: String
     @Published var password = ""
@@ -446,6 +452,54 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func handlePushedClip(_ event: ClipEvent) async {
+        guard isAuthenticated, syncEnabled else { return }
+        if isSynchronizing {
+            synchronizeAgain = true
+            return
+        }
+        switch pushedClipAction(currentSeq: lastSequence, incomingSeq: event.seq) {
+        case .ignore:
+            return
+        case .reconcile:
+            await synchronize()
+            return
+        case .apply:
+            break
+        }
+
+        isSynchronizing = true
+        defer {
+            isSynchronizing = false
+            if synchronizeAgain {
+                synchronizeAgain = false
+                Task { @MainActor [weak self] in await self?.synchronize() }
+            }
+        }
+
+        if event.originDeviceId != deviceID {
+            do {
+                let text = try CryptoBox.decrypt(event, keyBase64: sharedKey)
+                clipboard.writeWithoutUploading(text)
+                statusText = "已接收来自 \(event.originName) 的文本"
+                errorText = nil
+            } catch {
+                errorText = "无法解密来自 \(event.originName) 的文本，请重新登录"
+            }
+        }
+
+        lastSequence = event.seq
+        do {
+            try await authorized { client, token in
+                try await client.acknowledge(seq: event.seq, token: token)
+            }
+        } catch {
+            guard isAuthenticated else { return }
+            statusText = "等待网络恢复"
+            errorText = userMessage(error)
+        }
+    }
+
     private func startWebSocketLoop() {
         webSocketGeneration &+= 1
         let generation = webSocketGeneration
@@ -512,7 +566,7 @@ final class AppModel: ObservableObject {
                     case .string(let value): data = Data(value.utf8)
                     @unknown default: continue
                     }
-                    guard let envelope = try? JSONDecoder().decode(WebSocketEnvelope.self, from: data) else {
+                    guard let envelope = try? Self.webSocketDecoder.decode(WebSocketEnvelope.self, from: data) else {
                         continue
                     }
                     switch envelope.type {
@@ -521,7 +575,11 @@ final class AppModel: ObservableObject {
                         await flushPendingUploads()
                         await synchronize()
                     case "clip.created":
-                        await synchronize()
+                        if let event = envelope.data {
+                            await handlePushedClip(event)
+                        } else {
+                            await synchronize()
+                        }
                     case "device.logged_in", "device.updated", "device.revoked", "device.presence_changed":
                         await refreshDevices()
                     default:

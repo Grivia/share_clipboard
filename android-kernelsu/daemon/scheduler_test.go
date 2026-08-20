@@ -50,3 +50,24 @@ func TestSyncSchedulerNetworkBackoff(t *testing.T) {
 		t.Fatalf("network delay after recovery = %s, want 2s", delay)
 	}
 }
+
+func TestPushedClipSequenceActions(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  int64
+		incoming int64
+		want     pushedClipAction
+	}{
+		{name: "same", current: 7, incoming: 7, want: pushedClipIgnore},
+		{name: "older", current: 7, incoming: 6, want: pushedClipIgnore},
+		{name: "next", current: 7, incoming: 8, want: pushedClipApply},
+		{name: "gap", current: 7, incoming: 9, want: pushedClipReconcile},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := actionForPushedClip(test.current, test.incoming); got != test.want {
+				t.Fatalf("action = %d, want %d", got, test.want)
+			}
+		})
+	}
+}

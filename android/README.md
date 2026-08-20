@@ -18,7 +18,7 @@ APK 输出到：
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-客户端暂时不接入 FCM 或其他 Android Push。前台使用 WebSocket，后台使用 WorkManager 游标补拉。
+客户端暂时不接入 FCM 或其他 Android Push。前台通过 WebSocket 直接接收连续的加密事件，遇到序号缺口或重连时使用 REST 游标补拉；后台由 WorkManager 补拉。
 
 设备页面显示超级管理员、管理员和普通设备角色。超级管理员可以授予或撤销管理员；超级管理员和管理员可以让权限范围内的其他设备下线。客户端只显示服务端通过 capability 字段授权的操作。
 

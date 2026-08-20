@@ -17,12 +17,32 @@ func TestMissingConfigCreatesPrivateFile(t *testing.T) {
 	if config.ServerURL != "https://zhy.hair/fastcopy" {
 		t.Fatalf("default server URL = %q", config.ServerURL)
 	}
+	if !config.Enabled {
+		t.Fatal("new configuration did not enable synchronization")
+	}
 	info, err := os.Stat(stores.ConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("settings mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestCredentialSubmissionEnablesDaemon(t *testing.T) {
+	stores := configTestStores(t)
+	configJSON := `{"enabled":false,"server_url":"https://example.test","account":"alice","password":"secret"}`
+	encoded := base64.StdEncoding.EncodeToString([]byte(configJSON))
+	if err := stores.SaveEncodedUserConfig(encoded); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := stores.LoadUserConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.Enabled {
+		t.Fatal("credential submission left the daemon disabled")
 	}
 }
 

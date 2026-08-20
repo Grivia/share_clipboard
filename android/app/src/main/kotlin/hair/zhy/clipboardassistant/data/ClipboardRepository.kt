@@ -10,7 +10,9 @@ import hair.zhy.clipboardassistant.data.model.ClipEvent
 import hair.zhy.clipboardassistant.data.model.DeviceInput
 import hair.zhy.clipboardassistant.data.model.DeviceModel
 import hair.zhy.clipboardassistant.data.model.PersistedState
+import hair.zhy.clipboardassistant.data.model.PushedClipAction
 import hair.zhy.clipboardassistant.data.model.SecretState
+import hair.zhy.clipboardassistant.data.model.pushedClipAction
 import hair.zhy.clipboardassistant.data.remote.ApiClient
 import hair.zhy.clipboardassistant.data.remote.ApiException
 import hair.zhy.clipboardassistant.platform.ClipboardController
@@ -304,7 +306,7 @@ class ClipboardRepository(
             },
             onEvent = { event ->
                 if (event.type == "clip.created") {
-                    launchHandled { sync(writeClipboard = foreground, notify = false) }
+                    launchHandled { handlePushedClip(event.data) }
                 }
                 if (event.type.startsWith("device.")) launchHandled { refreshDevices() }
             },
@@ -400,6 +402,46 @@ class ClipboardRepository(
             }
         }
         update { it.copy(status = if (_state.value.connected) "已连接" else "同步完成", error = null) }
+    }
+
+    private suspend fun handlePushedClip(event: ClipEvent?) {
+        if (event == null) {
+            sync(writeClipboard = foreground, notify = false)
+            return
+        }
+        var needsReconciliation = false
+        operationMutex.withLock {
+            if (!hasSession() || !persisted.syncEnabled) return@withLock
+            when (pushedClipAction(persisted.lastSeq, event.seq)) {
+                PushedClipAction.IGNORE -> return@withLock
+                PushedClipAction.RECONCILE -> {
+                    needsReconciliation = true
+                    return@withLock
+                }
+                PushedClipAction.APPLY -> Unit
+            }
+
+            val isRemote = event.originDeviceId != persisted.deviceId
+            val text = if (isRemote) ClipboardCrypto.decrypt(event, sharedKey()) else null
+            persisted = persisted.copy(
+                lastSeq = event.seq,
+                latestRemote = if (isRemote) event else persisted.latestRemote,
+            )
+            stateStore.save(persisted)
+            authorized { api, token -> api.acknowledge(token, event.seq) }
+
+            if (text != null) {
+                update { it.copy(latestText = text, latestOrigin = event.originName) }
+                if (foreground) {
+                    clipboard.writeRemote(text)
+                    lastAppliedSeq = event.seq
+                    persisted = persisted.copy(lastAppliedSeq = event.seq)
+                    stateStore.save(persisted)
+                }
+            }
+            update { it.copy(status = if (_state.value.connected) "已连接" else "同步完成", error = null) }
+        }
+        if (needsReconciliation) sync(writeClipboard = foreground, notify = false)
     }
 
     private suspend fun applyPersistedRemote() {

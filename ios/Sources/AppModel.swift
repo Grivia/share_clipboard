@@ -412,6 +412,58 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    private func handlePushedClip(_ event: ClipEvent) async throws {
+        guard hasSession, syncEnabled else { return }
+        if syncing {
+            resyncRequested = true
+            return
+        }
+        switch pushedClipAction(currentSeq: persisted.lastSeq, incomingSeq: event.seq) {
+        case .ignore:
+            return
+        case .reconcile:
+            _ = try await sync(writeClipboard: foreground)
+            return
+        case .apply:
+            break
+        }
+
+        syncing = true
+        defer {
+            syncing = false
+            if resyncRequested {
+                resyncRequested = false
+                Task { [weak self] in
+                    guard let self else { return }
+                    do { _ = try await self.sync(writeClipboard: self.foreground) }
+                    catch { self.fail(error) }
+                }
+            }
+        }
+
+        let isRemote = event.originDeviceID != persisted.deviceID
+        let text = isRemote ? try ClipboardCrypto.decrypt(event, key: sharedKey()) : nil
+        persisted.lastSeq = event.seq
+        if isRemote { persisted.latestRemote = event }
+        saveState()
+        try await authorized { client, token in
+            try await client.acknowledge(accessToken: token, sequence: event.seq)
+        }
+
+        if let text {
+            latestText = text
+            latestOrigin = event.originName
+            if foreground {
+                writeClipboard(text)
+                lastAppliedSequence = event.seq
+                persisted.lastAppliedSeq = event.seq
+                saveState()
+            }
+        }
+        status = connected ? "已连接" : "同步完成"
+        errorMessage = nil
+    }
+
     private func applyPersistedRemote() {
         guard let event = persisted.latestRemote, event.seq > lastAppliedSequence,
               let key = try? sharedKey(),
@@ -470,7 +522,10 @@ final class AppModel: ObservableObject {
     private func handleSocketEvent(_ event: SocketEvent, generation: Int) async {
         guard generation == socketGeneration else { return }
         do {
-            if event.type == "clip.created" { _ = try await sync(writeClipboard: foreground) }
+            if event.type == "clip.created" {
+                if let clip = event.data { try await handlePushedClip(clip) }
+                else { _ = try await sync(writeClipboard: foreground) }
+            }
             if event.type.hasPrefix("device.") { try await refreshDevices() }
         } catch {
             fail(error)

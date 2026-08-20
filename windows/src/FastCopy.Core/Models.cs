@@ -79,7 +79,28 @@ public sealed record ClipCreateResponse(ClipEvent Event, string Status);
 
 public sealed record ClipsResponse(IReadOnlyList<ClipEvent> Clips);
 
-public sealed record WebSocketEnvelope(string Type);
+public sealed record WebSocketEnvelope(string Type, JsonElement? Data);
+
+public enum PushedClipAction
+{
+    Ignore,
+    Apply,
+    Reconcile
+}
+
+public static class ClipSequence
+{
+    public static PushedClipAction Action(long currentSequence, long incomingSequence)
+    {
+        if (incomingSequence <= currentSequence)
+        {
+            return PushedClipAction.Ignore;
+        }
+        return incomingSequence == currentSequence + 1
+            ? PushedClipAction.Apply
+            : PushedClipAction.Reconcile;
+    }
+}
 
 internal sealed record RefreshRequest(string RefreshToken);
 

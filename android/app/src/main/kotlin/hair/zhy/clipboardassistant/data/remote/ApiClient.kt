@@ -4,6 +4,7 @@ import hair.zhy.clipboardassistant.data.model.AckRequest
 import hair.zhy.clipboardassistant.data.model.AuthRequest
 import hair.zhy.clipboardassistant.data.model.AuthResponse
 import hair.zhy.clipboardassistant.data.model.ClipCreateResponse
+import hair.zhy.clipboardassistant.data.model.ClipEvent
 import hair.zhy.clipboardassistant.data.model.ClipUpload
 import hair.zhy.clipboardassistant.data.model.ClipsResponse
 import hair.zhy.clipboardassistant.data.model.DevicesResponse
@@ -17,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -92,7 +95,13 @@ class ApiClient(
             override fun onOpen(webSocket: WebSocket, response: Response) = onConnected()
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                runCatching { json.decodeFromString<SocketEvent>(text) }.getOrNull()?.let(onEvent)
+                val envelope = runCatching { json.decodeFromString<SocketEnvelope>(text) }.getOrNull() ?: return
+                val clip = if (envelope.type == "clip.created" && envelope.data != null) {
+                    runCatching { json.decodeFromJsonElement<ClipEvent>(envelope.data) }.getOrNull()
+                } else {
+                    null
+                }
+                onEvent(SocketEvent(envelope.type, clip))
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onDisconnected(null)
@@ -146,3 +155,6 @@ class ApiClient(
         return ApiException(status, error?.code ?: "HTTP_$status", error?.message ?: "服务器请求失败")
     }
 }
+
+@kotlinx.serialization.Serializable
+private data class SocketEnvelope(val type: String, val data: JsonElement? = null)

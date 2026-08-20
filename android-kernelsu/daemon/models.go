@@ -2,7 +2,7 @@ package main
 
 import "time"
 
-const daemonVersion = "0.3.5"
+const daemonVersion = "0.3.8"
 
 type UserConfig struct {
 	Enabled   bool   `json:"enabled"`
@@ -30,6 +30,11 @@ func (s *RuntimeState) ClearAuthentication() {
 	s.DeviceID = ""
 	s.SharedKey = ""
 	s.KeyVersion = 0
+}
+
+func (s *RuntimeState) InvalidateSession() {
+	s.ClearAuthentication()
+	s.LastSeq = 0
 }
 
 type DeviceInput struct {

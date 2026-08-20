@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -11,6 +12,24 @@ const (
 	maxPlaintextBytes = 256*1024 - 16
 	maxPendingEvents  = 20
 )
+
+type pushedClipAction uint8
+
+const (
+	pushedClipIgnore pushedClipAction = iota
+	pushedClipApply
+	pushedClipReconcile
+)
+
+func actionForPushedClip(currentSeq, incomingSeq int64) pushedClipAction {
+	if incomingSeq <= currentSeq {
+		return pushedClipIgnore
+	}
+	if incomingSeq == currentSeq+1 {
+		return pushedClipApply
+	}
+	return pushedClipReconcile
+}
 
 func (d *Daemon) queueLocalClipboard(text string) error {
 	digest := contentDigest(text)
@@ -127,4 +146,57 @@ func (d *Daemon) synchronize(ctx context.Context) error {
 		status.DeviceID = d.runtime.DeviceID
 	})
 	return nil
+}
+
+func (d *Daemon) applyPushedClip(ctx context.Context, event ClipEvent) syncOutcome {
+	switch actionForPushedClip(d.runtime.LastSeq, event.Seq) {
+	case pushedClipIgnore:
+		return syncReady
+	case pushedClipReconcile:
+		return d.syncOnce(ctx)
+	}
+
+	decryptFailed := false
+	if event.OriginDeviceID != d.runtime.DeviceID {
+		text, err := decryptText(event, d.runtime.SharedKey)
+		if err != nil {
+			decryptFailed = true
+			log.Printf("decrypt pushed event %s: %v", event.EventID, err)
+			d.reporter.Set("key_error", "Could not decrypt clipboard event; sign in again")
+		} else {
+			if err := d.bridge.Set(text); err != nil {
+				if errors.Is(err, errClipboardUnavailable) {
+					log.Printf("clipboard update deferred: %v", err)
+					d.reporter.Set("waiting_unlock", "Unlock Android to apply the clipboard")
+					return syncWaitingUnlock
+				}
+				d.networkError(err)
+				return syncOutcomeForError(err)
+			}
+			d.lastDigest = contentDigest(text)
+			d.hasDigest = true
+		}
+	}
+
+	d.runtime.LastSeq = event.Seq
+	if err := d.stores.SaveRuntime(d.runtime); err != nil {
+		d.networkError(err)
+		return syncNetworkError
+	}
+	if err := d.withAuth(ctx, func(token string) error {
+		return d.api.Acknowledge(ctx, token, event.Seq)
+	}); err != nil {
+		d.networkError(err)
+		return syncOutcomeForError(err)
+	}
+	if !decryptFailed {
+		d.reporter.Update(func(status *DaemonStatus) {
+			status.State = "ready"
+			status.Message = "Synchronized"
+			status.LastSyncAt = time.Now().UTC()
+			status.Pending = len(d.pending)
+			status.DeviceID = d.runtime.DeviceID
+		})
+	}
+	return syncReady
 }

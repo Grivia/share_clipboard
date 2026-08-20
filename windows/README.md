@@ -10,9 +10,10 @@ the macOS and Android clients.
 - After login, closing the window leaves 粘贴板助手 in the notification area.
 - A system clipboard event is used for local changes; there is no clipboard
   polling loop.
-- WebSocket notifications trigger an immediate cursor sync. While connected,
-  the REST safety reconciliation runs every five minutes; while disconnected,
-  it runs every minute.
+- A contiguous encrypted WebSocket event is decrypted and applied directly.
+  Sequence gaps and reconnects use REST cursor recovery. The safety
+  reconciliation runs every five minutes while connected and every minute
+  while disconnected.
 - The device list is refreshed when the settings window is opened, when the
   user clicks Refresh, or when a presence event arrives while the window is
   visible.

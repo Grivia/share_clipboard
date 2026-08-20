@@ -24,7 +24,7 @@ const elements = {
 };
 
 let currentConfig = {
-  enabled: false,
+  enabled: true,
   server_url: "https://zhy.hair/fastcopy",
   account: "",
   password: "",
@@ -269,14 +269,18 @@ async function refreshDevices() {
   try {
     const result = await exec(`${CONTROL} refresh-devices`);
     if (result.errno !== 0) {
-      toast("无法刷新在线设备");
-      await loadStatus();
+      const status = await loadStatus();
+      toast(status && !status.authenticated ? "登录状态已失效，请重新登录" : "无法刷新在线设备");
       return;
     }
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const status = await loadStatus();
       if (!status) continue;
+      if (!status.authenticated || ["auth_required", "unconfigured"].includes(status.state)) {
+        toast("登录状态已失效，请重新登录");
+        return;
+      }
       const completed = !status.devices_refreshing
         && (status.devices_updated_at !== previousUpdate || Boolean(status.devices_error));
       if (completed) return;
@@ -327,11 +331,12 @@ async function save(event) {
   elements.save.disabled = true;
   const wasAuthenticated = authenticated;
   const next = {
-    enabled: elements.enabled.checked,
+    enabled: wasAuthenticated ? elements.enabled.checked : true,
     server_url: elements.serverURL.value.trim().replace(/\/+$/, ""),
     account: wasAuthenticated ? currentConfig.account : elements.account.value.trim(),
     password: wasAuthenticated ? "" : elements.password.value,
   };
+  if (!wasAuthenticated) elements.enabled.checked = true;
   const encoded = encodeBase64(JSON.stringify(next));
   const result = await exec(`${CONTROL} config-set '${encoded}'`);
   if (result.errno !== 0) {
@@ -361,9 +366,15 @@ async function save(event) {
 async function signOut() {
   if (!authenticated || !window.confirm("确定退出当前账号？")) return;
   elements.logout.disabled = true;
+  setStatus("unconfigured", "正在退出登录", "");
   try {
     const result = await exec(`${CONTROL} logout`);
     if (result.errno !== 0) {
+      const status = await loadStatus();
+      if (!status?.authenticated) {
+        toast("已退出登录");
+        return;
+      }
       toast("退出登录失败");
       return;
     }
@@ -374,6 +385,9 @@ async function signOut() {
     await loadConfig();
     await loadStatus();
     toast("已退出登录");
+  } catch (error) {
+    await loadStatus();
+    toast(authenticated ? "退出登录失败" : "已退出登录");
   } finally {
     elements.logout.disabled = false;
   }

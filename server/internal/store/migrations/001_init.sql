@@ -5,14 +5,14 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
-    email TEXT NOT NULL,
+    account TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (lower(email));
+CREATE UNIQUE INDEX IF NOT EXISTS users_account_unique ON users (account);
 
 CREATE TABLE IF NOT EXISTS devices (
     id UUID PRIMARY KEY,
@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS devices (
     platform TEXT NOT NULL,
     os_version TEXT NOT NULL DEFAULT '',
     app_version TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'member'
+        CHECK (role IN ('super_admin', 'admin', 'member')),
     first_login_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMPTZ,
@@ -30,6 +32,9 @@ CREATE TABLE IF NOT EXISTS devices (
     UNIQUE (user_id, installation_id),
     UNIQUE (user_id, id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS devices_user_super_admin_unique
+    ON devices (user_id) WHERE role = 'super_admin';
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
     id UUID PRIMARY KEY,
@@ -52,7 +57,7 @@ CREATE TABLE IF NOT EXISTS login_events (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     device_id UUID REFERENCES devices(id) ON DELETE SET NULL,
-    email_hash BYTEA NOT NULL,
+    account_hash BYTEA NOT NULL,
     success BOOLEAN NOT NULL,
     remote_ip TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -97,3 +102,20 @@ CREATE TABLE IF NOT EXISTS device_cursors (
     last_acked_seq BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS device_push_tokens (
+    device_id UUID NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL CHECK (provider = 'apns'),
+    environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'production')),
+    token TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (device_id, provider),
+    UNIQUE (provider, environment, token),
+    FOREIGN KEY (user_id, device_id)
+        REFERENCES devices(user_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS device_push_tokens_user_idx
+    ON device_push_tokens (user_id);

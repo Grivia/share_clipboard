@@ -182,12 +182,14 @@ func utilityAuthorized(
 		}
 	}
 	if runtime.RefreshToken == "" {
+		runtime.InvalidateSession()
+		_ = stores.SaveRuntime(*runtime)
 		return &APIError{Status: 401, Code: "SESSION_EXPIRED", Message: "session expired"}
 	}
 	response, err := api.Refresh(ctx, runtime.RefreshToken)
 	if err != nil {
 		if isUnauthorized(err) {
-			runtime.ClearAuthentication()
+			runtime.InvalidateSession()
 			_ = stores.SaveRuntime(*runtime)
 		}
 		return err
@@ -197,7 +199,12 @@ func utilityAuthorized(
 	if err := stores.SaveRuntime(*runtime); err != nil {
 		return err
 	}
-	return operation(ctx, api, runtime.AccessToken)
+	err = operation(ctx, api, runtime.AccessToken)
+	if isUnauthorized(err) {
+		runtime.InvalidateSession()
+		_ = stores.SaveRuntime(*runtime)
+	}
+	return err
 }
 
 func logoutSession(stores *Stores) error {
@@ -209,21 +216,24 @@ func logoutSession(stores *Stores) error {
 	if err != nil {
 		return err
 	}
+	remoteRuntime := runtime
+	if err := clearLocalSession(stores, user, runtime); err != nil {
+		return err
+	}
 
-	if runtime.AccessToken != "" || runtime.RefreshToken != "" {
+	if remoteRuntime.AccessToken != "" || remoteRuntime.RefreshToken != "" {
 		if api, apiErr := NewAPIClient(user.ServerURL); apiErr != nil {
 			log.Printf("remote logout skipped: %v", apiErr)
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			remoteErr := revokeRemoteSession(ctx, api, runtime)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			remoteErr := revokeRemoteSession(ctx, api, remoteRuntime)
 			cancel()
 			if remoteErr != nil {
-				log.Printf("remote logout failed; clearing local session: %v", remoteErr)
+				log.Printf("remote logout failed after local session was cleared: %v", remoteErr)
 			}
 		}
 	}
-
-	return clearLocalSession(stores, user, runtime)
+	return nil
 }
 
 func clearLocalSession(stores *Stores, user UserConfig, runtime RuntimeState) error {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -169,6 +170,82 @@ func TestDeviceManagementRefreshesExpiredAccessToken(t *testing.T) {
 	}
 	if saved.AccessToken != "renewed-access" || saved.RefreshToken != "renewed-refresh" {
 		t.Fatalf("saved tokens were not refreshed: %+v", saved)
+	}
+}
+
+func TestRefreshOnlineDevicesInvalidSessionRequiresLogin(t *testing.T) {
+	baseURL, err := url.Parse("https://fastcopy.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	stores := &Stores{
+		RuntimePath: filepath.Join(directory, "runtime.json"),
+		StatusPath:  filepath.Join(directory, "status.json"),
+	}
+	runtime := RuntimeState{
+		InstallationID: "installation-1",
+		AccessToken:    "deleted-access",
+		RefreshToken:   "deleted-refresh",
+		UserID:         "deleted-user",
+		DeviceID:       "deleted-device",
+		SharedKey:      base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		KeyVersion:     keyDerivationVersion,
+		LastSeq:        42,
+	}
+	requestCount := 0
+	client := &APIClient{
+		baseURL: baseURL,
+		http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestCount++
+			if requestCount == 1 && request.URL.Path != "/v1/devices" {
+				t.Errorf("first path = %s, want /v1/devices", request.URL.Path)
+			}
+			if requestCount == 2 && request.URL.Path != "/v1/auth/refresh" {
+				t.Errorf("second path = %s, want /v1/auth/refresh", request.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: http.StatusUnauthorized,
+				Body: io.NopCloser(strings.NewReader(
+					`{"error":{"code":"SESSION_EXPIRED","message":"session is invalid or expired"}}`,
+				)),
+				Request: request,
+			}, nil
+		})},
+	}
+	reporter := NewStatusReporter(stores.StatusPath)
+	daemon := NewDaemon(
+		UserConfig{ServerURL: baseURL.String(), Account: "alice"},
+		runtime,
+		nil,
+		stores,
+		client,
+		nil,
+		reporter,
+	)
+
+	err = daemon.refreshOnlineDevices(context.Background())
+	if !isUnauthorized(err) {
+		t.Fatalf("error = %v, want unauthorized", err)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+	saved, err := stores.LoadRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.AccessToken != "" || saved.RefreshToken != "" || saved.UserID != "" ||
+		saved.DeviceID != "" || saved.SharedKey != "" || saved.KeyVersion != 0 || saved.LastSeq != 0 {
+		t.Fatalf("expired authentication was not cleared: %+v", saved)
+	}
+	var status DaemonStatus
+	if err := readJSON(stores.StatusPath, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "auth_required" || status.Authenticated || status.Connected ||
+		status.DeviceID != "" || status.DevicesLoaded || status.DevicesRefreshing {
+		t.Fatalf("unexpected expired-session status: %+v", status)
 	}
 }
 

@@ -115,7 +115,7 @@ func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 		t.Fatalf("connect WebSocket: %v", err)
 	}
 	defer connection.Close(websocket.StatusNormalClosure, "test complete")
-	readEventType(t, connection, "hello")
+	readEventData(t, connection, "hello")
 
 	secondUpload := map[string]any{
 		"client_event_id": newUUID(t),
@@ -124,8 +124,27 @@ func TestAPIWorkflowAndIdempotencyScopes(t *testing.T) {
 		"nonce":           randomBase64(t, 12),
 		"ciphertext":      randomBase64(t, 48),
 	}
-	postClip(t, client, baseURL, reloginA.Tokens.AccessToken, secondUpload, http.StatusCreated)
-	readEventType(t, connection, "clip.created")
+	second := postClip(t, client, baseURL, reloginA.Tokens.AccessToken, secondUpload, http.StatusCreated)
+	clipData := readEventData(t, connection, "clip.created")
+	var pushedClip struct {
+		EventID        string `json:"event_id"`
+		ClientEventID  string `json:"client_event_id"`
+		Seq            int64  `json:"seq"`
+		OriginDeviceID string `json:"origin_device_id"`
+		Ciphertext     string `json:"ciphertext"`
+	}
+	if err := json.Unmarshal(clipData, &pushedClip); err != nil {
+		t.Fatalf("decode pushed clipboard event: %v", err)
+	}
+	if pushedClip.EventID != second.Event.EventID || pushedClip.Seq != second.Event.Seq {
+		t.Fatalf("pushed event = (%q, %d), want (%q, %d)", pushedClip.EventID, pushedClip.Seq, second.Event.EventID, second.Event.Seq)
+	}
+	if pushedClip.ClientEventID != secondUpload["client_event_id"] || pushedClip.OriginDeviceID != deviceA.Device.ID {
+		t.Fatal("pushed clipboard event is missing its event identity")
+	}
+	if pushedClip.Ciphertext != secondUpload["ciphertext"] {
+		t.Fatal("pushed clipboard event is missing its encrypted payload")
+	}
 
 	var clips struct {
 		Clips []struct {
@@ -281,7 +300,7 @@ func requestJSON(
 	}
 }
 
-func readEventType(t *testing.T, connection *websocket.Conn, want string) {
+func readEventData(t *testing.T, connection *websocket.Conn, want string) json.RawMessage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -290,7 +309,8 @@ func readEventType(t *testing.T, connection *websocket.Conn, want string) {
 		t.Fatalf("read WebSocket event: %v", err)
 	}
 	var event struct {
-		Type string `json:"type"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(data, &event); err != nil {
 		t.Fatal(err)
@@ -298,6 +318,7 @@ func readEventType(t *testing.T, connection *websocket.Conn, want string) {
 	if event.Type != want {
 		t.Fatalf("WebSocket event type is %q, want %q", event.Type, want)
 	}
+	return event.Data
 }
 
 func newUUID(t *testing.T) string {

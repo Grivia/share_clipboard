@@ -820,6 +820,106 @@ internal sealed class SyncEngine : IAsyncDisposable
         }
     }
 
+    private async Task HandlePushedClipAsync(ClipEvent clip, CancellationToken cancellationToken)
+    {
+        if (!await _syncGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var needsReconciliation = false;
+        byte[]? key = null;
+        try
+        {
+            string? ownDeviceId;
+            PushedClipAction action;
+            lock (_gate)
+            {
+                if (!IsAuthenticated || !_state.SyncEnabled || _sharedKey is null)
+                {
+                    return;
+                }
+                action = ClipSequence.Action(_state.LastSequence, clip.Seq);
+                ownDeviceId = _state.DeviceId;
+                if (action == PushedClipAction.Apply)
+                {
+                    key = (byte[])_sharedKey.Clone();
+                }
+            }
+
+            if (action == PushedClipAction.Reconcile)
+            {
+                needsReconciliation = true;
+            }
+            else if (action == PushedClipAction.Apply)
+            {
+                string? text = null;
+                if (clip.OriginDeviceId != ownDeviceId)
+                {
+                    try
+                    {
+                        text = FastCopyCrypto.Decrypt(clip, key!);
+                        await _clipboard.WriteWithoutUploadingAsync(text, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (CryptographicException exception)
+                    {
+                        AppLog.Error("Could not decrypt a pushed clipboard event", exception);
+                        lock (_gate)
+                        {
+                            _error = $"无法解密来自 {clip.OriginName} 的文本，请重新登录";
+                        }
+                    }
+                }
+
+                lock (_gate)
+                {
+                    _state.LastSequence = clip.Seq;
+                    if (text is not null)
+                    {
+                        _status = $"已接收来自 {clip.OriginName} 的文本";
+                        _error = null;
+                    }
+                }
+                PersistState();
+                await AuthorizedAsync<object?>(async (client, token, ct) =>
+                {
+                    await client.AcknowledgeAsync(clip.Seq, token, ct).ConfigureAwait(false);
+                    return null;
+                }, cancellationToken).ConfigureAwait(false);
+                Publish();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Pushed clipboard fast path failed", exception);
+            lock (_gate)
+            {
+                _status = "等待网络恢复";
+                _error = UserMessage(exception);
+            }
+            needsReconciliation = true;
+            Publish();
+        }
+        finally
+        {
+            if (key is not null)
+            {
+                CryptographicOperations.ZeroMemory(key);
+            }
+            _syncGate.Release();
+        }
+
+        if (needsReconciliation || Volatile.Read(ref _syncRequested) == 1)
+        {
+            await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private async Task ReconciliationLoopAsync(CancellationToken cancellationToken)
     {
         try
@@ -926,7 +1026,26 @@ internal sealed class SyncEngine : IAsyncDisposable
                                 await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
                                 break;
                             case "clip.created":
-                                await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+                                ClipEvent? pushedClip = null;
+                                if (envelope.Data is { ValueKind: JsonValueKind.Object } data)
+                                {
+                                    try
+                                    {
+                                        pushedClip = data.Deserialize<ClipEvent>(FastCopyJson.Options);
+                                    }
+                                    catch (JsonException)
+                                    {
+                                    }
+                                }
+                                if (pushedClip is null)
+                                {
+                                    await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+                                }
+                                else
+                                {
+                                    await HandlePushedClipAsync(pushedClip, cancellationToken)
+                                        .ConfigureAwait(false);
+                                }
                                 break;
                             case "device.logged_in":
                             case "device.updated":

@@ -78,6 +78,8 @@ type Daemon struct {
 	bridge      *Bridge
 	reporter    *StatusReporter
 	wake        chan struct{}
+	pushedClips chan ClipEvent
+	wsReset     chan struct{}
 	wsState     atomic.Value
 	wsConnected atomic.Bool
 	lastDigest  [32]byte
@@ -95,7 +97,9 @@ func NewDaemon(
 ) *Daemon {
 	daemon := &Daemon{
 		user: user, runtime: runtime, pending: pending, stores: stores,
-		api: api, bridge: bridge, reporter: reporter, wake: make(chan struct{}, 1),
+		api: api, bridge: bridge, reporter: reporter,
+		wake: make(chan struct{}, 1), pushedClips: make(chan ClipEvent, 16),
+		wsReset: make(chan struct{}, 1),
 	}
 	daemon.publishWebSocketState()
 	return daemon
@@ -103,7 +107,10 @@ func NewDaemon(
 
 func (d *Daemon) Run(ctx context.Context) {
 	go d.bridge.Run(ctx)
-	go websocketLoop(ctx, d.api, d.webSocketState, d.reporter, d.wake, &d.wsConnected)
+	go websocketLoop(
+		ctx, d.api, d.webSocketState, d.reporter,
+		d.wake, d.pushedClips, d.wsReset, &d.wsConnected,
+	)
 	deviceRefreshSignals := make(chan os.Signal, 1)
 	signal.Notify(deviceRefreshSignals, syscall.SIGUSR1)
 	defer signal.Stop(deviceRefreshSignals)
@@ -134,14 +141,14 @@ func (d *Daemon) Run(ctx context.Context) {
 			}
 		case <-d.wake:
 			runSync()
+		case event := <-d.pushedClips:
+			outcome := d.applyPushedClip(ctx, event)
+			resetTimer(timer, scheduler.NextDelay(outcome, d.wsConnected.Load()))
 		case <-timer.C:
 			runSync()
 		case <-deviceRefreshSignals:
 			if err := d.refreshOnlineDevices(ctx); err != nil {
 				log.Printf("refresh devices: %v", err)
-				if isAuthRequiredError(err) {
-					d.networkError(err)
-				}
 			}
 		}
 	}
@@ -240,12 +247,6 @@ func (d *Daemon) withAuth(ctx context.Context, operation func(string) error) err
 		return err
 	}
 	if refreshErr := d.refreshSession(ctx); refreshErr != nil {
-		if isUnauthorized(refreshErr) {
-			d.runtime.AccessToken = ""
-			d.runtime.RefreshToken = ""
-			_ = d.stores.SaveRuntime(d.runtime)
-			d.publishWebSocketState()
-		}
 		return refreshErr
 	}
 	return operation(d.runtime.AccessToken)
@@ -308,10 +309,15 @@ func (d *Daemon) authenticate(ctx context.Context) error {
 
 func (d *Daemon) refreshSession(ctx context.Context) error {
 	if d.runtime.RefreshToken == "" {
-		return &APIError{Status: 401, Code: "SESSION_EXPIRED", Message: "session expired"}
+		err := &APIError{Status: 401, Code: "SESSION_EXPIRED", Message: "session expired"}
+		d.invalidateSession(err.Error())
+		return err
 	}
 	response, err := d.api.Refresh(ctx, d.runtime.RefreshToken)
 	if err != nil {
+		if isUnauthorized(err) {
+			d.invalidateSession(err.Error())
+		}
 		return err
 	}
 	d.runtime.AccessToken = response.Tokens.AccessToken
@@ -322,6 +328,28 @@ func (d *Daemon) refreshSession(ctx context.Context) error {
 	d.publishWebSocketState()
 	d.reporter.Update(func(status *DaemonStatus) { status.Authenticated = true })
 	return nil
+}
+
+func (d *Daemon) invalidateSession(message string) {
+	d.runtime.InvalidateSession()
+	if err := d.stores.SaveRuntime(d.runtime); err != nil {
+		log.Printf("clear expired session: %v", err)
+	}
+	d.publishWebSocketState()
+	d.wsConnected.Store(false)
+	d.reporter.Update(func(status *DaemonStatus) {
+		status.State = "auth_required"
+		status.Message = message
+		status.Connected = false
+		status.Authenticated = false
+		status.DeviceID = ""
+		status.OnlineDevices = nil
+		status.Devices = nil
+		status.DevicesLoaded = false
+		status.DevicesRefreshing = false
+		status.DevicesError = ""
+		status.DevicesUpdatedAt = nil
+	})
 }
 
 func (d *Daemon) refreshOnlineDevices(ctx context.Context) error {
@@ -336,6 +364,10 @@ func (d *Daemon) refreshOnlineDevices(ctx context.Context) error {
 		return requestErr
 	})
 	if err != nil {
+		if isAuthRequiredError(err) {
+			d.networkError(err)
+			return err
+		}
 		d.reporter.Update(func(status *DaemonStatus) {
 			status.DevicesRefreshing = false
 			status.DevicesError = err.Error()
@@ -368,6 +400,7 @@ func filterOnlineDevices(devices []DeviceSummary) []DeviceSummary {
 
 func (d *Daemon) publishWebSocketState() {
 	d.wsState.Store(WebSocketState{Token: d.runtime.AccessToken})
+	notify(d.wsReset)
 }
 
 func (d *Daemon) webSocketState() WebSocketState {

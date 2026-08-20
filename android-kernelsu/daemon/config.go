@@ -49,6 +49,7 @@ func (s *Stores) LoadUserConfig() (UserConfig, error) {
 	data, err := os.ReadFile(s.ConfigPath)
 	if errors.Is(err, os.ErrNotExist) {
 		config := UserConfig{
+			Enabled:   true,
 			ServerURL: "https://zhy.hair/fastcopy",
 		}
 		if err := s.SaveUserConfig(config); err != nil {
@@ -123,6 +124,10 @@ func (s *Stores) SaveEncodedUserConfig(encoded string) error {
 	config, _, err := decodeUserConfig(data)
 	if err != nil {
 		return err
+	}
+	// Supplying a password is an explicit sign-in attempt, so the daemon must run.
+	if config.Password != "" {
+		config.Enabled = true
 	}
 	return s.SaveUserConfig(config)
 }

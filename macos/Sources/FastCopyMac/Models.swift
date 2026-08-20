@@ -114,6 +114,34 @@ struct APIErrorEnvelope: Codable {
     let error: Detail
 }
 
-struct WebSocketEnvelope: Codable {
+struct WebSocketEnvelope: Decodable {
     let type: String
+    let data: ClipEvent?
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case data
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        if type == "clip.created" {
+            data = try? container.decode(ClipEvent.self, forKey: .data)
+        } else {
+            data = nil
+        }
+    }
+}
+
+enum PushedClipAction: Equatable {
+    case ignore
+    case apply
+    case reconcile
+}
+
+func pushedClipAction(currentSeq: Int64, incomingSeq: Int64) -> PushedClipAction {
+    if incomingSeq <= currentSeq { return .ignore }
+    if incomingSeq == currentSeq + 1 { return .apply }
+    return .reconcile
 }

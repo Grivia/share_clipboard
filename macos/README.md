@@ -1,8 +1,8 @@
 # 粘贴板助手 macOS 客户端
 
 Native macOS 13+ menu-bar client. It polls `NSPasteboard`, encrypts text with
-AES-256-GCM, persists encrypted uploads before sending, and uses WebSocket
-events as a wake-up signal for cursor-based REST synchronization.
+AES-256-GCM, persists encrypted uploads before sending, and applies contiguous
+encrypted WebSocket events directly with cursor-based REST recovery.
 
 Build the application bundle:
 
@@ -15,7 +15,8 @@ open 'dist/粘贴板助手.app'
 The same command also creates `dist/粘贴板助手-macos-v0.2.6.zip` for transfer to
 another Mac.
 
-WebSocket events trigger immediate cursor synchronization. A healthy connection
+Contiguous WebSocket events are decrypted and applied without an extra GET.
+Sequence gaps and reconnects trigger cursor reconciliation. A healthy connection
 uses a five-minute safety reconciliation, disconnected operation falls back to
 one-minute REST reconciliation, and failed uploads retry with 2/5/15/30/60-second
 backoff. Opening the settings window refreshes the device list.

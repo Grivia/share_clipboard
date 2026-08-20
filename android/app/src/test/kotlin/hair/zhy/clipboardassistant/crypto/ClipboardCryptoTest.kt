@@ -1,6 +1,8 @@
 package hair.zhy.clipboardassistant.crypto
 
 import hair.zhy.clipboardassistant.data.model.ClipEvent
+import hair.zhy.clipboardassistant.data.model.PushedClipAction
+import hair.zhy.clipboardassistant.data.model.pushedClipAction
 import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -33,5 +35,13 @@ class ClipboardCryptoTest {
             expiresAt = "2026-01-02T00:00:00Z",
         )
         assertEquals("跨设备文本\nAndroid", ClipboardCrypto.decrypt(event, key))
+    }
+
+    @Test
+    fun pushedClipSequenceActions() {
+        assertEquals(PushedClipAction.IGNORE, pushedClipAction(7, 7))
+        assertEquals(PushedClipAction.IGNORE, pushedClipAction(7, 6))
+        assertEquals(PushedClipAction.APPLY, pushedClipAction(7, 8))
+        assertEquals(PushedClipAction.RECONCILE, pushedClipAction(7, 9))
     }
 }

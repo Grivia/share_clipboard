@@ -23,13 +23,10 @@ The production environment sets `FASTCOPY_MAX_USERS=1`. The first account can
 be created through the unified authentication endpoint; subsequent requests
 with that account log in automatically.
 
-The APNs token API and `device_push_tokens` migration are deployed. APNs
-sending currently remains disabled until an Apple token-signing key is added.
-
-Migration `004_device_roles.sql` adds the unique per-account super-admin role.
-For an existing account it selects the oldest non-revoked device, falling back
-to the oldest historical device. Verify that device after the first upgraded
-startup before assigning additional administrators.
+The APNs token API and `device_push_tokens` table are deployed. APNs sending
+currently remains disabled until an Apple token-signing key is added. Fresh
+databases are created from one complete baseline schema; no legacy data
+migration is retained.
 
 ## Enable APNs
 

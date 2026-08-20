@@ -8,6 +8,8 @@ try
     EncryptionRoundTripsUnicodeText();
     AuthenticationDataRejectsTampering();
     JsonUsesProtocolFieldNames();
+    WebSocketClipPayloadDeserializes();
+    PushedClipSequenceActions();
     RetryIntervalsMatchOtherClients();
     Console.WriteLine("FastCopy.Core smoke tests passed.");
     return 0;
@@ -82,6 +84,28 @@ static void JsonUsesProtocolFieldNames()
     var json = JsonSerializer.Serialize(upload, FastCopyJson.Options);
     True(json.Contains("\"client_event_id\"", StringComparison.Ordinal), "snake_case JSON");
     True(!json.Contains("ClientEventId", StringComparison.Ordinal), "no CLR field names in JSON");
+}
+
+static void WebSocketClipPayloadDeserializes()
+{
+    const string json = """
+        {"type":"clip.created","data":{"event_id":"server-event","client_event_id":"client-event","seq":8,"origin_device_id":"device-a","origin_name":"Windows","content_type":"text/plain","algorithm":"AES-256-GCM","nonce":"nonce","ciphertext":"ciphertext","created_at":"2026-01-01T00:00:00Z","expires_at":"2026-01-02T00:00:00Z"}}
+        """;
+    var envelope = JsonSerializer.Deserialize<WebSocketEnvelope>(json, FastCopyJson.Options)
+        ?? throw new InvalidOperationException("WebSocket envelope was null");
+    var clip = envelope.Data?.Deserialize<ClipEvent>(FastCopyJson.Options)
+        ?? throw new InvalidOperationException("WebSocket clip payload was null");
+    Equal("clip.created", envelope.Type, "WebSocket event type");
+    Equal(8L, clip.Seq, "WebSocket clip sequence");
+    Equal("device-a", clip.OriginDeviceId, "WebSocket origin device");
+}
+
+static void PushedClipSequenceActions()
+{
+    Equal(PushedClipAction.Ignore, ClipSequence.Action(7, 7), "same sequence");
+    Equal(PushedClipAction.Ignore, ClipSequence.Action(7, 6), "older sequence");
+    Equal(PushedClipAction.Apply, ClipSequence.Action(7, 8), "next sequence");
+    Equal(PushedClipAction.Reconcile, ClipSequence.Action(7, 9), "sequence gap");
 }
 
 static void RetryIntervalsMatchOtherClients()

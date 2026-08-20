@@ -109,8 +109,15 @@ data class ErrorEnvelope(val error: ApiErrorBody)
 @Serializable
 data class ApiErrorBody(val code: String, val message: String)
 
-@Serializable
-data class SocketEvent(val type: String)
+data class SocketEvent(val type: String, val data: ClipEvent? = null)
+
+enum class PushedClipAction { IGNORE, APPLY, RECONCILE }
+
+fun pushedClipAction(currentSeq: Long, incomingSeq: Long): PushedClipAction = when {
+    incomingSeq <= currentSeq -> PushedClipAction.IGNORE
+    incomingSeq == currentSeq + 1 -> PushedClipAction.APPLY
+    else -> PushedClipAction.RECONCILE
+}
 
 @Serializable
 data class SecretState(

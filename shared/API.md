@@ -131,15 +131,33 @@ device is a different pair and can be accepted as a new event.
 Connect to `GET /v1/events/ws` with the access token header. Events are JSON:
 
 ```json
-{"type":"clip.created","data":{}}
+{
+  "type": "clip.created",
+  "data": {
+    "event_id": "server-event-uuid",
+    "client_event_id": "client-event-uuid",
+    "seq": 42,
+    "origin_device_id": "device-uuid",
+    "origin_name": "MacBook Pro",
+    "content_type": "text/plain",
+    "algorithm": "AES-256-GCM",
+    "nonce": "base64",
+    "ciphertext": "base64",
+    "created_at": "2026-08-19T10:00:00Z",
+    "expires_at": "2026-08-26T10:00:00Z"
+  }
+}
 {"type":"device.presence_changed","data":{}}
 {"type":"device.logged_in","data":{}}
 {"type":"device.revoked","data":{}}
 {"type":"device.updated","data":{}}
 ```
 
-WebSocket delivery is opportunistic. On every reconnect, clients call the
-clipboard GET endpoint with their persisted `after_seq` cursor.
+For `clip.created`, `data` is the same encrypted event envelope returned by the
+clipboard REST API. A client may decrypt and apply it directly only when `seq`
+equals its persisted cursor plus one. Missing or malformed data, a sequence gap,
+and every reconnect trigger REST reconciliation with the persisted `after_seq`
+cursor. WebSocket delivery remains opportunistic; REST is the recovery path.
 
 ## APNs device tokens
 

@@ -13,7 +13,7 @@ chmod +x scripts/build-module.sh
 ./scripts/build-module.sh
 ```
 
-Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.5.zip` from KernelSU Manager, reboot,
+Install `dist/clipboard-assistant-kernelsu-arm64-v0.3.8.zip` from KernelSU Manager, reboot,
 then open the module WebUI. Enter the same account and password used by the
 macOS client. A missing account is registered automatically.
 
@@ -27,6 +27,8 @@ also provides a sign-out button that revokes the server session and removes
 local tokens, the encryption key, and pending uploads.
 
 The WebUI defaults to the production API at `https://zhy.hair/fastcopy`.
+Submitting credentials automatically enables synchronization and starts the
+sign-in attempt. After sign-in, the same switch can pause background syncing.
 
 Runtime controls are also available over adb:
 
@@ -64,11 +66,12 @@ screen is locked. Every remote write is therefore read back and acknowledged by
 the bridge. If verification fails, the server cursor is left unchanged and the
 daemon reports `waiting_unlock` until it can retry after the device is unlocked.
 
-While WebSocket is connected and synchronization is healthy, the daemon uses a
-five-minute cursor reconciliation interval. A WebSocket event still triggers an
-immediate sync. Disconnected operation falls back to a 30-second reconciliation,
-network failures use 2/5/15/30/60-second backoff, and locked-screen clipboard
-writes retry every 10 seconds.
+While WebSocket is connected and synchronization is healthy, contiguous
+encrypted events are decrypted and applied directly. Sequence gaps and
+reconnects use REST cursor recovery, with a five-minute safety reconciliation.
+Disconnected operation falls back to a 30-second reconciliation, network
+failures use 2/5/15/30/60-second backoff, and locked-screen clipboard writes
+retry every 10 seconds.
 
 Some MIUI Android 13 builds print a missing
 `/data/system/theme_config/theme_compatibility.xml` stack trace while

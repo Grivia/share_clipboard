@@ -22,7 +22,7 @@ macOS 复制后，Android 会自动接收并在搜狗输入法中显示；Androi
 | macOS | 可用 | macOS 13 及以上 | 0.2.6 |
 | Windows | 可用 | Windows 10 / 11，x64 或 ARM64 | 0.1.2 |
 | Android | 可用 | Android 10 及以上 | 0.1.1 |
-| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.5 |
+| Android KernelSU | 可用 | arm64、Android 10 及以上、KernelSU | 0.3.8 |
 | iOS | 可用 | iOS 17 及以上，APNs | 0.1.0 |
 | Linux 桌面端 | 尚未实现 | 服务端协议已预留 `linux` 平台类型 | - |
 
@@ -33,7 +33,7 @@ Android KernelSU 模块目前已在 MIUI Android 13、KernelSU 0.9.5 上进行�
 - 统一的“登录或注册”流程：账号不存在时自动注册，存在时直接登录。
 - 账号不要求是邮箱，可使用 1 至 128 个非控制字符；账号区分大小写。
 - 客户端使用 AES-256-GCM 加密剪贴板文本，服务端不接触明文和共享密钥。
-- WebSocket 实时通知与 REST 游标补偿结合，断线重连后不会只依赖瞬时消息。
+- WebSocket 直接下发完整加密事件，REST 游标同步负责断线、乱序和缺口补偿。
 - 上传前持久化密文队列，网络恢复后自动重试。
 - 使用设备 ID 与客户端事件 ID 实现 POST 幂等，超时重试不会重复创建事件。
 - 维护历史设备、登录状态和在线状态，并以超级管理员、管理员和普通设备三级权限控制设备下线。
@@ -50,11 +50,11 @@ flowchart LR
     D["Android App"] -->|"HTTPS：前台同步与后台补拉"| S
     I["iOS App"] -->|"HTTPS：前台同步与后台补拉"| S
     S --> P["PostgreSQL：密文、设备、会话、游标"]
-    S -.->|"WebSocket：新事件唤醒信号"| A
-    S -.->|"WebSocket：新事件唤醒信号"| W
-    S -.->|"WebSocket：新事件唤醒信号"| K
-    S -.->|"WebSocket：前台唤醒"| D
-    S -.->|"WebSocket + APNs"| I
+    S -.->|"WebSocket：加密事件快路径"| A
+    S -.->|"WebSocket：加密事件快路径"| W
+    S -.->|"WebSocket：加密事件快路径"| K
+    S -.->|"WebSocket：前台加密事件"| D
+    S -.->|"前台 WebSocket / 后台 APNs"| I
 ```
 
 一次本地复制会经过以下步骤：
@@ -63,11 +63,11 @@ flowchart LR
 2. 客户端生成随机 `client_event_id` 和 12 字节随机 nonce。
 3. 客户端以本地派生的 256 位密钥进行 AES-GCM 加密。
 4. 完整的加密请求先写入本机待发送队列，再通过 `POST /v1/clips` 上传。
-5. 服务端保存密文，按 `(origin_device_id, client_event_id)` 保证幂等，并通过 WebSocket 通知在线设备、通过 APNs 唤醒 iOS 设备。
-6. 接收端使用已持久化的 `after_seq` 游标调用 REST 接口拉取事件，在本地解密后写入系统剪贴板。
-7. 接收端确认新的序号。WebSocket 丢失或网络中断时，下次游标同步仍能补回遗漏事件。
+5. 服务端保存密文，按 `(origin_device_id, client_event_id)` 保证幂等，并通过 WebSocket 向在线设备下发完整加密事件、通过 APNs 唤醒后台 iOS 设备。
+6. 若 WebSocket 事件序号恰好等于本地游标加一，接收端直接解密并写入剪贴板；若发现序号缺口、消息损坏或刚刚重连，则使用 `after_seq` 调用 REST 补拉。
+7. 接收端持久化并确认新的序号。WebSocket 丢失或网络中断时，下次游标同步仍能补回遗漏事件。
 
-WebSocket 在这里是低延迟的“叫醒信号”，PostgreSQL 中的事件序列和客户端游标才是可靠同步依据。
+WebSocket 是低延迟传输快路径；PostgreSQL 中的事件序列、客户端持久化游标和 REST 补拉共同保证最终一致性。
 
 ## 安全模型
 
@@ -115,7 +115,7 @@ fastcopy:v1|<client_event_id>|text/plain
 
 管理员可以下线普通设备或其他管理员。所有客户端都使用服务端在 `GET /v1/devices` 中返回的 `can_revoke` 和 `can_change_role` 决定是否显示操作入口；真正的权限仍由服务端在事务中校验，不能通过伪造请求绕过。
 
-从旧版本升级时，数据库迁移会把账号最早登录且尚未撤销的设备设为超级管理员；如果已经没有未撤销设备，则回退到最早的历史设备。超级管理员角色具有数据库唯一约束，不会出现同一账号拥有两台超级管理员设备的情况。
+全新数据库中，账号第一次登录的设备会在注册事务内直接写为超级管理员。超级管理员角色具有数据库唯一约束，不会出现同一账号拥有两台超级管理员设备的情况。
 
 ## 仓库结构
 
@@ -296,10 +296,10 @@ chmod +x scripts/build-module.sh
 产物：
 
 ```text
-android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.5.zip
+android-kernelsu/dist/clipboard-assistant-kernelsu-arm64-v0.3.8.zip
 ```
 
-在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示历史设备、在线状态、当前设备允许执行的管理操作和退出登录按钮；设备列表只在打开页面、设备操作后或手动刷新时请求，不在后台持续轮询。退出登录会撤销服务端会话，并清除模块本地的令牌、加密密钥和待上传内容。
+在 KernelSU Manager 中安装 ZIP，重启手机后打开模块 WebUI，填写服务端、账号和密码。认证成功后，账号密码表单会隐藏，WebUI 改为显示历史设备、在线状态、当前设备允许执行的管理操作和退出登录按钮；设备列表只在打开页面、设备操作后或手动刷新时请求，不在后台持续轮询。服务端确认会话已经失效时，WebUI 会立即返回登录页面。退出登录会先清除模块本地的令牌、加密密钥和待上传内容，再尽力撤销服务端会话，因此断网时也可以正常退出。
 
 模块由两个进程职责组成：
 
@@ -338,7 +338,7 @@ su -c /data/adb/modules/fastcopy_kernelsu/bin/fastcopyctl logout
 | 场景 | macOS / Windows | Android | iOS | Android KernelSU |
 | --- | --- | --- | --- | --- |
 | 本地剪贴板监听 | 应用常驻时监听 | 仅前台系统回调 | 仅前台系统通知 | 系统回调 + 700ms 本地兜底轮询 |
-| 即时事件 | WebSocket | 前台 WebSocket | 前台 WebSocket、后台 APNs | WebSocket |
+| 即时事件 | WebSocket 密文直推 | 前台 WebSocket 密文直推 | 前台 WebSocket 密文直推、后台 APNs 唤醒 | WebSocket 密文直推 |
 | 可靠补偿 | 定期 REST 游标校验 | WorkManager 定期补拉 | Push 唤醒补拉、前台补拉 | 定期 REST 游标校验 |
 | 后台写剪贴板 | 支持 | 不支持 | 不支持 | 支持，受 ROM 与锁屏状态影响 |
 | 网络上传失败 | 持久化密文队列 | 持久化密文队列 | 持久化密文队列 | 退避重试 |
@@ -500,7 +500,7 @@ share_clipboard_server
 
 ### WebSocket 断开会丢内容吗？
 
-不会仅因为 WebSocket 断开而丢失。WebSocket 只触发立即同步；客户端会保存最后处理的序号，并在重连或定期校验时通过 REST 拉取缺失事件。
+不会。连续的 WebSocket 事件会直接解密应用；客户端同时保存最后处理的序号，一旦重连、消息不完整或发现序号缺口，就会通过 REST 拉取缺失事件。定期游标校验再提供一层安全补偿。
 
 ### 为什么服务端不能根据密文判断内容是否相同？
 
